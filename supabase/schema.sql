@@ -28,3 +28,8 @@ create policy "update own state"
   on public.app_state for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- Make the table reachable via the Data API for signed-in users, regardless of
+-- the project's "automatically expose new tables" setting. Row-Level Security
+-- above still restricts each user to their own row.
+grant select, insert, update on public.app_state to authenticated;
