@@ -26,7 +26,7 @@ const equipment: EquipmentItem[] = [
   { id: 'dumbbells', label: 'Dumbbells', owned: true, weightsLb: [20, 30] },
 ]
 const profile: Profile = {
-  role: 'patient', name: 'David', surgeryDate: '2026-02-23', clearedForExercise: true,
+  role: 'patient', name: 'Alex', surgeryDate: '2026-02-23', clearedForExercise: true,
   sternalPrecautionsLifted: true, inCardiacRehab: true, phaseOverride: null, onboarded: true, aiEnabled: true,
 }
 

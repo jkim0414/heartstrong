@@ -13,7 +13,7 @@ const equipment: EquipmentItem[] = [
 function profile(surgeryDate: string, sternalLifted: boolean): Profile {
   return {
     role: 'patient',
-    name: 'David',
+    name: 'Alex',
     surgeryDate,
     clearedForExercise: true,
     sternalPrecautionsLifted: sternalLifted,

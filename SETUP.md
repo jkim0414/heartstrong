@@ -1,9 +1,11 @@
 # HeartStrong — setup checklist
 
-Everything is built. These are the only steps that need your accounts. ~15–20 minutes, mostly waiting and copy-paste. I've automated what I can (`npm run migrate`, `npm run check`).
+These are the steps that need your own accounts/keys. ~15–20 minutes, mostly waiting and copy-paste. Helper scripts automate the rest (`npm run migrate`, `npm run check`).
 
-## 0. Rotate your Anthropic key (do this first)
-The key shared earlier is exposed. At console.anthropic.com → **API Keys**, revoke it and create a new one. Put the new key in `.env.local` as `ANTHROPIC_API_KEY=...` (the file already exists and is gitignored).
+> The AI workouts and accounts/sync are **optional**. Skip Supabase and the Anthropic key entirely and the app still runs fully (built-in workout engine, on-device storage) — just `npm install && npm run dev`.
+
+## 0. Get an Anthropic API key (optional — for AI workouts)
+At console.anthropic.com → **API Keys**, create a key. Copy `.env.example` to `.env.local` and set `ANTHROPIC_API_KEY=...` (`.env.local` is gitignored — never commit real keys). If you ever paste a key somewhere public by accident, revoke and rotate it.
 
 ## 1. Create a Supabase project
 1. Sign up at **supabase.com** → **New project** (pick a name, a strong DB password — save it — and a region near you).
@@ -46,8 +48,8 @@ Open http://localhost:5173, sign in with your email, click the link it sends. (P
    - `SUPABASE_URL`, `SUPABASE_ANON_KEY` (same as the VITE ones — the function uses these to verify sign-ins)
 4. Redeploy. Then set that deployed URL as the **Site URL** + a **Redirect URL** in Supabase (step 4).
 
-## 7. Put it on his phone
-Open the deployed URL on his phone → **Share → Add to Home Screen** (iOS) / **⋮ → Add to Home Screen** (Android). Launches full-screen like a native app.
+## 7. Install on a phone
+Open the deployed URL on the phone → **Share → Add to Home Screen** (iOS) / **⋮ → Add to Home Screen** (Android). Launches full-screen like a native app.
 
 ---
 If anything errors, run `npm run check` and send me the output — I can debug from there.

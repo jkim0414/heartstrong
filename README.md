@@ -1,16 +1,18 @@
 # HeartStrong ❤️
 
-A cardiac-aware daily workout app built for one specific person: a 66-year-old recovering from quadruple bypass surgery (with a prior STEMI + stents), who is deconditioned but cleared to rebuild toward genuine strength and conditioning.
+A cardiac-aware home workout PWA for people rebuilding fitness after a cardiac event (e.g., bypass / CABG surgery or a heart attack). It's designed to bridge from gentle, safe early recovery to progressive, genuinely effective conditioning.
 
-It is **not** post-op physical therapy and **not** generic CrossFit. It's a phased bridge: it starts where the body actually is (sternum still healing) and progresses, safely, toward real scaled CrossFit — progressive dumbbell strength + metcons — as clearances come in.
+It is **not** post-op physical therapy and **not** generic CrossFit. It's a phased bridge: it starts where a deconditioned, recently-operated body actually is (sternum still healing) and progresses, safely, toward scaled-CrossFit-style training — progressive dumbbell strength + metcons — as medical clearances come in.
+
+> ⚕️ **Not medical advice.** HeartStrong is an educational tool, built as a personal project. It does not replace a cardiologist, surgeon, or cardiac-rehab program, and it is not affiliated with any medical provider. Anyone using it should get their doctor's clearance before starting and stop / seek care for any warning sign. Provided as-is, with no warranty — use at your own risk.
 
 ---
 
 ## Why it's built the way it is (the clinical reasoning)
 
-Every design decision below traces to the medical records:
+The design reflects common considerations for someone recovering from bypass surgery or a heart attack. (It was originally tailored to one person's situation; the reasoning below is general.)
 
-| Finding in the records | What the app does about it |
+| Clinical consideration | What the app does about it |
 | --- | --- |
 | **On carvedilol (a beta-blocker)** — blunts and caps heart rate | Drives all intensity by **RPE (perceived exertion) + the talk test**, never heart-rate zones. Fitness-tracker "zones" are unreliable on this medication. |
 | **~1 month post-sternotomy** — breastbone still healing (sternal precautions, usually 6–8 wks) | **Phase 1 loads nothing through the arms/chest.** Chest-loading movements (presses, rows, push-ups, carries, planks) are *hard-locked* until you mark sternal precautions lifted — this guardrail can't be overridden, even by a manual phase change. |
@@ -22,7 +24,7 @@ Every design decision below traces to the medical records:
 
 A daily **readiness check** (chest symptoms, breathlessness, dizziness, palpitations, incision pain, feeling unwell, swelling) gates each workout and recommends rest if anything is flagged. An always-visible **Warning signs** button lists stop-now symptoms and a one-tap **Call 911**.
 
-> **This is an educational/encouragement tool, not medical advice.** It does not replace his cardiology team or cardiac rehab. He should get clearance before starting and stop/seek care for any warning sign.
+> **This is an educational/encouragement tool, not medical advice.** It does not replace a cardiology team or cardiac rehab. Get clearance before starting, and stop / seek care for any warning sign.
 
 ---
 
@@ -33,9 +35,9 @@ For the CrossFit "constantly varied, never the same" feel, the app can generate 
 It's wired to be **safe and key-safe**:
 
 - The model may **only choose from the safety-filtered movement list** the app sends it (already excludes chest-loading and out-of-phase movements). It controls structure/format/selection/dosing/titles — not medical cues, which always come from the vetted library.
-- **Every AI workout is re-validated in the browser** (`src/engine/validate.ts`) against the same hard rails: eligible movements only, loads clamped to what he owns, RPE capped at the phase ceiling, warm-up + cool-down required. If anything fails → it silently **falls back to the deterministic engine**.
+- **Every AI workout is re-validated in the browser** (`src/engine/validate.ts`) against the same hard rails: eligible movements only, loads clamped to what the user owns, RPE capped at the phase ceiling, warm-up + cool-down required. If anything fails → it silently **falls back to the deterministic engine**.
 - The same fallback covers **offline / network failure**, so the app always works.
-- Your **API key lives only in the serverless function** (`/api/generate`) as an environment variable — it is never bundled into the client or sent to his device.
+- The **API key lives only in the serverless function** (`/api/generate`) as an environment variable — it is never bundled into the client or sent to the user's device.
 
 **Setup:** deploy to Vercel (zero-config: it detects Vite + the `/api` function), then set `ANTHROPIC_API_KEY` in the project's Environment Variables. That's it. To test the function locally: `npm i -g vercel && vercel dev` with a `.env.local` (see `.env.example`).
 
@@ -62,7 +64,7 @@ How privacy is handled:
 4. In **Authentication → URL Configuration**, add your deployed site URL (and `http://localhost:5173` for dev) to the redirect allow-list.
 5. Set env vars (see `.env.example`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (+ the non-`VITE_` copies for the function). Deploy.
 
-**Migrating existing on-device data:** if your dad used the app before signing in, after his first sign-in go to **Settings → Account → "Import data already on this device"** to pull that history into his account. (New accounts start fresh — so friends you show it to don't inherit his data.)
+**Migrating existing on-device data:** if you used the app before signing in, then after your first sign-in go to **Settings → Account → "Import data already on this device"** to pull that history into your account. (New accounts start fresh, so other people signing in on the same device don't inherit your data.)
 
 > Note on sync: it's last-write-wins per device, which is plenty for one person across a phone and laptop. Sign-out keeps the local cache on that device but hides it behind the next sign-in.
 
@@ -75,7 +77,7 @@ Phase is determined automatically from surgery date + clearance flags (override 
 - **Phase 3 · Build** — progressive dumbbell strength + true metcons (AMRAPs, intervals, rounds). RPE 4–7.
 - **Phase 4 · Perform** — varied, periodized scaled CrossFit. RPE up to 8 on intervals — never maximal.
 
-Each day generates **warmup + workout (strength and/or conditioning) + cooldown**, drawn only from his available equipment, deterministic per day (stable once viewed) but varied across days.
+Each day generates **warmup + workout (strength and/or conditioning) + cooldown**, drawn only from the user's available equipment, deterministic per day (stable once viewed) but varied across days.
 
 ## Features
 
@@ -98,16 +100,16 @@ npm run build    # production build into dist/
 npm run preview  # preview the production build
 ```
 
-## Getting it onto Dad's phone
+## Installing on a phone
 
 The simplest path — **deploy the `dist/` folder** to any static host (all free):
 
 - **Netlify**: run `npm run build`, then drag the `dist` folder onto https://app.netlify.com/drop. You get a URL instantly.
 - **Vercel / Cloudflare Pages / GitHub Pages**: point at this repo; build command `npm run build`, output dir `dist`.
 
-Then on his phone, open the URL and **"Add to Home Screen"** (iOS Safari: Share → Add to Home Screen; Android Chrome: ⋮ → Add to Home Screen). It launches full-screen like a native app and works offline.
+Then on the phone, open the URL and **"Add to Home Screen"** (iOS Safari: Share → Add to Home Screen; Android Chrome: ⋮ → Add to Home Screen). It launches full-screen like a native app and works offline.
 
-Because all data lives in the browser's local storage, it stays on his device — but that also means it doesn't sync across devices and is tied to that browser. (Easy future upgrade: add a backend/sync if you want it on multiple devices.)
+Without the optional accounts backend (below), all data lives in the browser's local storage on that device — private, but not synced across devices. Enabling Supabase adds accounts + cross-device sync.
 
 ---
 
@@ -136,3 +138,9 @@ To re-run the safety tests (bundle with esbuild + run with node):
 ./node_modules/.bin/esbuild tools/gen-check.ts --bundle --platform=node --format=esm --outfile=/tmp/gen-check.mjs && node /tmp/gen-check.mjs
 ./node_modules/.bin/esbuild tools/validate-check.ts --bundle --platform=node --format=esm --outfile=/tmp/validate-check.mjs && node /tmp/validate-check.mjs
 ```
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 James Kim. Educational personal project — **not medical advice** and not affiliated with any medical provider. See the LICENSE file for the full warranty disclaimer.
