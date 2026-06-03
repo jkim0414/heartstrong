@@ -16,8 +16,11 @@ if (!url) {
   process.exit(1)
 }
 
-const schemaPath = fileURLToPath(new URL('../supabase/schema.sql', import.meta.url))
+// Optional file arg, e.g. `npm run migrate -- supabase/02_caregiver.sql`
+const rel = process.argv[2] || 'supabase/schema.sql'
+const schemaPath = rel.startsWith('/') ? rel : fileURLToPath(new URL(`../${rel}`, import.meta.url))
 const sql = readFileSync(schemaPath, 'utf8')
+console.log(`Applying ${rel} …`)
 
 const client = new pg.Client({
   connectionString: url,

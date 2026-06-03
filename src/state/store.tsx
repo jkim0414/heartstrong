@@ -42,7 +42,7 @@ function defaultState(): AppState {
   }
 }
 
-function mergeState(parsed: Partial<AppState>): AppState {
+export function mergeState(parsed: Partial<AppState>): AppState {
   const base = defaultState()
   return {
     ...base,
@@ -173,7 +173,7 @@ function startOfWeek(date: ISODate): ISODate {
   return addDays(date, -dow)
 }
 
-function computeStats(state: AppState, today: ISODate): Stats {
+export function computeStats(state: AppState, today: ISODate): Stats {
   const log = state.log
   const totalWorkouts = Object.values(log).filter((e) => e.status === 'completed').length
   const weekStart = startOfWeek(today)

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStore } from '../state/store'
 import { useAuth } from '../state/auth'
 import { Button, Card, SectionTitle, Toggle } from './ui'
+import { CareSection } from './CareSection'
 import { PHASES } from '../data/phases'
 import type { PhaseId } from '../types'
 
@@ -41,6 +42,8 @@ export function Settings() {
               Sign out
             </Button>
           </Card>
+
+          <CareSection />
         </>
       )}
 
