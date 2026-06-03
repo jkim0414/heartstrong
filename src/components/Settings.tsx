@@ -17,6 +17,17 @@ export function Settings() {
     <div className="space-y-5">
       <h1 className="text-2xl font-extrabold text-slate-900">Settings</h1>
 
+      <SectionTitle>How you use HeartStrong</SectionTitle>
+      <Card className="space-y-3 p-5">
+        <p className="text-sm text-slate-600">
+          You’re set up for <span className="font-semibold">your own workouts</span>. If you’re really here to support
+          someone else, switch to caregiver mode — it swaps the workout plan for a view of the people you follow.
+        </p>
+        <Button variant="secondary" className="!text-sm" onClick={() => updateProfile({ role: 'caregiver' })}>
+          Switch to caregiver mode
+        </Button>
+      </Card>
+
       {auth.configured && auth.status === 'signedIn' && (
         <>
           <SectionTitle>Account</SectionTitle>

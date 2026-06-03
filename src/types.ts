@@ -123,6 +123,8 @@ export interface LogEntry {
 }
 
 export interface Profile {
+  /** Which experience this account uses. Undefined (legacy) is treated as patient. */
+  role?: 'patient' | 'caregiver'
   name: string
   /** Date of the bypass (CABG) surgery. */
   surgeryDate: ISODate | null

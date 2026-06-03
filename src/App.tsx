@@ -8,6 +8,7 @@ import { Equipment } from './components/Equipment'
 import { Settings } from './components/Settings'
 import { SafetySheet, SafetyButton } from './components/SafetySheet'
 import { SignIn } from './components/SignIn'
+import { CaregiverApp } from './components/CaregiverApp'
 import { useAuth } from './state/auth'
 
 type Tab = 'today' | 'history' | 'progress' | 'equipment' | 'settings'
@@ -41,6 +42,10 @@ export function App() {
         <Onboarding />
       </div>
     )
+  }
+
+  if (state.profile.role === 'caregiver') {
+    return <CaregiverApp />
   }
 
   return (
