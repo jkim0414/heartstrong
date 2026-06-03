@@ -6,6 +6,7 @@ import { WorkoutView } from './WorkoutView'
 import { ReadinessCheck } from './ReadinessCheck'
 import { formatLong } from '../lib/date'
 import { fetchAiWorkout } from '../engine/llm'
+import { Glossarize } from './Glossarize'
 
 export function Today() {
   const { today, workoutFor, phaseResult, state, stats, setDayStatus, clearDay, setOverride, updateProfile, setAiWorkout, clearAiWorkout, recentTitles } = useStore()
@@ -75,18 +76,24 @@ export function Today() {
       )}
 
       {/* Summary — compact, with collapsible "why" */}
-      <Card className="overflow-hidden">
-        <div className="bg-gradient-to-br from-brand-700 to-brand-800 p-4 text-white">
+      <Card>
+        <div className="rounded-t-2xl bg-gradient-to-br from-brand-700 to-brand-800 p-4 text-white">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-100">Today · {def.name}</p>
             <span className="text-xs font-medium text-brand-100">{usingAi ? '✨ for you' : ''}</span>
           </div>
-          <h2 className="mt-0.5 text-xl font-extrabold">{workout.title}</h2>
-          <p className="mt-1 text-sm text-brand-50">{workout.summary}</p>
+          <h2 className="mt-0.5 text-xl font-extrabold">
+            <Glossarize text={workout.title} />
+          </h2>
+          <p className="mt-1 text-sm text-brand-50">
+            <Glossarize text={workout.summary} />
+          </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             {!workout.isRecovery && <span className="rounded-lg bg-white/15 px-2.5 py-1 font-semibold">⏱ ~{workout.estMinutes} min</span>}
             <span className="rounded-lg bg-white/15 px-2.5 py-1 font-semibold">💪 Effort {workout.rpeLow}–{workout.rpeHigh}/10</span>
-            <span className="text-xs text-brand-100">· talk test: {workout.talkTest.replace(/\.$/, '')}</span>
+            <span className="text-xs text-brand-100">
+              · <Glossarize text={`talk test: ${workout.talkTest.replace(/\.$/, '')}`} />
+            </span>
           </div>
         </div>
         <button onClick={() => setShowWhy((v) => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-medium text-slate-500">

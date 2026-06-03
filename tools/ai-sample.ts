@@ -36,6 +36,7 @@ const loads = loadableLoads(equipment)
 const weekday = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(date + 'T00:00:00').getDay()]
 
 const SYSTEM = `You are a cardiac-rehabilitation-aware strength & conditioning coach building ONE day's workout for a 66-year-old man recovering from quadruple bypass (CABG) surgery, on a beta-blocker and dual antiplatelet therapy. Philosophy: "scaled CrossFit" — constantly varied, genuinely effective — NOT timid PT. Vary FORMATS and STRUCTURE (AMRAP, EMOM, rounds-for-time, intervals, ladders, chippers, themed). Give the session an engaging title. VOICE: address the user as "you"; never third person.
+KEEP IT SIMPLE AND SHORT: write for a 66-year-old beginner. Short plain sentences, minimal jargon. Summary = ONE short sentence (~20 words). Each block note = at most ONE short plain sentence (omit if not needed). Brief format lines. No flowery filler, no anatomy jargon (say "back of your legs", not "posterior chain"). AMRAP/EMOM are fine (the app defines them).
 ABSOLUTE RULES: (1) use ONLY movements from the provided list by exact id; (2) intensity by RPE/talk test within the given range, never to failure; (3) every non-recovery session has a warmup first and cooldown last; (4) dumbbell loads only from owned weights, lighter for overhead; (5) ~20-45 min; (6) do not write movement cues — the app supplies them. Respond by calling submit_workout.`
 
 const TOOL = {
