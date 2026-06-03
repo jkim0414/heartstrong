@@ -1,16 +1,17 @@
 // Sanity-check your configuration. Run with:  npm run check
-// (reads .env.local via Node's --env-file)
+import { readEnv } from './env.mjs'
 
+const env = readEnv()
 const checks = []
 const ok = (label, pass, hint) => checks.push({ label, pass, hint })
 
-const url = process.env.VITE_SUPABASE_URL
-const anon = process.env.VITE_SUPABASE_ANON_KEY
-const anthropic = process.env.ANTHROPIC_API_KEY
+const url = env.VITE_SUPABASE_URL
+const anon = env.VITE_SUPABASE_ANON_KEY
 
-ok('ANTHROPIC_API_KEY set', !!anthropic, 'Needed for AI workouts (serverless function).')
+ok('ANTHROPIC_API_KEY set', !!env.ANTHROPIC_API_KEY, 'Needed for AI workouts (serverless function).')
 ok('VITE_SUPABASE_URL set', !!url, 'Supabase → Settings → API → Project URL.')
 ok('VITE_SUPABASE_ANON_KEY set', !!anon, 'Supabase → Settings → API → anon public key.')
+ok('SUPABASE_URL set (for the function)', !!env.SUPABASE_URL, 'Same value as VITE_SUPABASE_URL.')
 
 if (url) {
   try {
@@ -29,7 +30,7 @@ for (const c of checks) {
 }
 console.log(
   allPass
-    ? '\nAll set. Run `npm run migrate` (if you haven’t), then `npm run dev`.\n'
+    ? '\nAll set. Run `npm run migrate` (if you haven’t), then `vercel dev`.\n'
     : '\nFill in the missing values in .env.local, then run `npm run check` again.\n',
 )
 process.exit(allPass ? 0 : 1)

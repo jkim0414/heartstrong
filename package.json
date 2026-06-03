@@ -8,8 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host",
-    "migrate": "node --env-file=.env.local scripts/migrate.mjs",
-    "check": "node --env-file=.env.local scripts/check-setup.mjs"
+    "migrate": "node scripts/migrate.mjs",
+    "check": "node scripts/check-setup.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.107.0",

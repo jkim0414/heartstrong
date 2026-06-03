@@ -4,8 +4,9 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
+import { readEnv } from './env.mjs'
 
-const url = process.env.DATABASE_URL
+const url = readEnv().DATABASE_URL || process.env.DATABASE_URL
 if (!url) {
   console.error(
     '\n✗ DATABASE_URL is not set.\n' +
