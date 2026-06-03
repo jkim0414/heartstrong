@@ -24,7 +24,9 @@ export function SignIn() {
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-700 text-3xl">❤️</div>
         <h1 className="text-3xl font-extrabold text-slate-900">HeartStrong</h1>
-        <p className="mt-2 text-base text-slate-600">Sign in to pick up your workouts on any device.</p>
+        <p className="mt-2 text-base text-slate-600">
+          Heart-smart daily workouts for recovery — and a simple way to follow a loved one’s progress.
+        </p>
       </div>
 
       {sent ? (
@@ -71,9 +73,12 @@ export function SignIn() {
         </Card>
       )}
 
-      <p className="mt-5 px-2 text-center text-xs leading-relaxed text-slate-400">
-        Your workouts and health details are private to your account and synced securely so you can use HeartStrong on
-        any device. We only use your email to sign you in.
+      <p className="mt-4 px-2 text-center text-sm text-slate-500">
+        New here? You’ll choose whether you’re here for your own recovery or to support someone right after you sign in.
+      </p>
+      <p className="mt-3 px-2 text-center text-xs leading-relaxed text-slate-400">
+        Your information is private to your account and synced securely so you can use HeartStrong on any device. We
+        only use your email to sign you in.
       </p>
     </div>
   )
