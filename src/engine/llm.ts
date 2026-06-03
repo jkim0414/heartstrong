@@ -1,0 +1,98 @@
+import type { EquipmentItem, ISODate, PhaseId, Profile, RawAiWorkout, Workout } from '../types'
+import { PHASES, WEEKLY_SCHEDULE } from '../data/phases'
+import { getEligibleMovements, loadableLoads } from './generator'
+import { validateAiWorkout } from './validate'
+import { weekday } from '../lib/date'
+import { getAccessToken } from '../state/auth'
+
+/** Endpoint for the serverless function that holds the API key. */
+const ENDPOINT = '/api/generate'
+
+export interface AiRequest {
+  date: ISODate
+  weekdayName: string
+  phase: PhaseId
+  phaseName: string
+  phaseTagline: string
+  rpeLow: number
+  rpeHigh: number
+  talkTest: string
+  allowsSternalLoad: boolean
+  /** Suggested session shape for the day (the model may riff within reason). */
+  suggestedFocus: string
+  /** Owned loadable equipment id -> available weights (lb). */
+  loads: Record<string, number[]>
+  recentTitles: string[]
+  /** The ONLY movements the model may use — already safety-filtered. */
+  movements: { id: string; name: string; pattern: string; cue: string }[]
+  /** Whether the model should consider salting for a fresh variation. */
+  salt: number
+}
+
+const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+function buildRequest(
+  date: ISODate,
+  phase: PhaseId,
+  profile: Profile,
+  equipment: EquipmentItem[],
+  recentTitles: string[],
+  salt: number,
+): AiRequest {
+  const def = PHASES[phase]
+  const movements = getEligibleMovements(phase, profile, equipment).map((m) => ({
+    id: m.id,
+    name: m.name,
+    pattern: m.pattern,
+    cue: m.cue,
+  }))
+  return {
+    date,
+    weekdayName: WD[weekday(date)],
+    phase,
+    phaseName: def.name,
+    phaseTagline: def.tagline,
+    rpeLow: def.rpeLow,
+    rpeHigh: def.rpeHigh,
+    talkTest: def.talkTest,
+    allowsSternalLoad: def.allowsSternalLoad && profile.sternalPrecautionsLifted,
+    suggestedFocus: WEEKLY_SCHEDULE[phase][weekday(date)],
+    loads: loadableLoads(equipment),
+    recentTitles: recentTitles.slice(0, 10),
+    movements,
+    salt,
+  }
+}
+
+/**
+ * Ask the AI endpoint for a workout, then validate it locally. Returns a fully
+ * validated Workout, or null on any failure (network/offline/invalid) so the
+ * caller can fall back to the deterministic engine.
+ */
+export async function fetchAiWorkout(
+  date: ISODate,
+  phase: PhaseId,
+  profile: Profile,
+  equipment: EquipmentItem[],
+  recentTitles: string[],
+  salt = 0,
+): Promise<Workout | null> {
+  try {
+    const body = buildRequest(date, phase, profile, equipment, recentTitles, salt)
+    const token = await getAccessToken()
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const raw = (await res.json()) as RawAiWorkout
+    const { workout } = validateAiWorkout(raw, date, phase, profile, equipment)
+    return workout
+  } catch {
+    return null
+  }
+}
