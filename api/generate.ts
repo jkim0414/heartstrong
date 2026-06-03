@@ -143,7 +143,7 @@ Compose a varied, engaging session within all the safety rules and call submit_w
 
     const anthropicReq = {
       model: MODEL,
-      max_tokens: 1500,
+      max_tokens: 4000,
       temperature: 1,
       system: [
         { type: 'text', text: SYSTEM_DOCTRINE, cache_control: { type: 'ephemeral' } },

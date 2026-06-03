@@ -71,7 +71,7 @@ export function validateAiWorkout(
           name: m.name, // from our library, not the model
           cue: m.cue, // from our library, not the model
           scaleDown: m.scaleDown,
-          dose: String(it.dose ?? '').slice(0, 60) || '1 set',
+          dose: String(it.dose ?? '').slice(0, 90) || '1 set',
           loadLb,
         }
       })
@@ -80,9 +80,9 @@ export function validateAiWorkout(
     if (items.length === 0 && !isRecovery) continue
     blocks.push({
       block: b.block,
-      title: String(b.title ?? b.block).slice(0, 60),
-      format: b.format ? String(b.format).slice(0, 120) : undefined,
-      note: b.note ? String(b.note).slice(0, 240) : undefined,
+      title: String(b.title ?? b.block).slice(0, 80),
+      format: b.format ? String(b.format).slice(0, 240) : undefined,
+      note: b.note ? String(b.note).slice(0, 600) : undefined,
       items,
     })
   }
@@ -106,8 +106,8 @@ export function validateAiWorkout(
   const workout: Workout = {
     date,
     phase,
-    title: String(raw.title ?? def.name).slice(0, 80),
-    summary: String(raw.summary ?? def.tagline).slice(0, 240),
+    title: String(raw.title ?? def.name).slice(0, 100),
+    summary: String(raw.summary ?? def.tagline).slice(0, 400),
     estMinutes,
     rpeLow,
     rpeHigh,
