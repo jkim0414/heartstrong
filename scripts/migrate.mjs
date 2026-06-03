@@ -19,7 +19,11 @@ if (!url) {
 const schemaPath = fileURLToPath(new URL('../supabase/schema.sql', import.meta.url))
 const sql = readFileSync(schemaPath, 'utf8')
 
-const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+const client = new pg.Client({
+  connectionString: url,
+  ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 15000,
+})
 try {
   await client.connect()
   await client.query(sql)
