@@ -58,12 +58,16 @@ export function SignIn() {
             {busy ? 'Sending…' : 'Email me a sign-in link'}
           </Button>
 
-          <div className="flex items-center gap-3 text-sm text-slate-400">
-            <span className="h-px flex-1 bg-slate-200" /> or <span className="h-px flex-1 bg-slate-200" />
-          </div>
-          <Button variant="secondary" full onClick={() => signInWithGoogle()}>
-            Continue with Google
-          </Button>
+          {import.meta.env.VITE_ENABLE_GOOGLE === 'true' && (
+            <>
+              <div className="flex items-center gap-3 text-sm text-slate-400">
+                <span className="h-px flex-1 bg-slate-200" /> or <span className="h-px flex-1 bg-slate-200" />
+              </div>
+              <Button variant="secondary" full onClick={() => signInWithGoogle()}>
+                Continue with Google
+              </Button>
+            </>
+          )}
         </Card>
       )}
 
