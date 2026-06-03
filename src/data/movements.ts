@@ -19,7 +19,7 @@ export const MOVEMENTS: Movement[] = [
     sternalLoad: false,
     impact: 0,
     cue: 'Sit or stand tall. Breathe in slowly through the nose so your belly rises, out gently through pursed lips. Calms the system and helps lung recovery.',
-    tags: ['warmup', 'cooldown', 'recovery'],
+    tags: ['warmup', 'recovery'],
   },
   {
     id: 'shoulder_rolls',

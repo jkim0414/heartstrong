@@ -245,11 +245,13 @@ function buildMetcon(ctx: Ctx): WorkoutBlock | null {
   // Choose 2–3 movements that flow: prefer metcon-tagged + legs + locomotion.
   const candidates = ctx.eligible.filter(
     (m) =>
+      !m.tags?.includes('warmup') && // keep warm-up/mobility drills out of the workout
       (m.tags?.includes('metcon') ||
         m.pattern === 'locomotion' ||
         m.pattern === 'squat' ||
         m.pattern === 'lunge' ||
-        m.pattern === 'hinge') &&
+        m.pattern === 'hinge' ||
+        m.pattern === 'carry') &&
       m.impact <= (ctx.phase >= 3 ? 2 : 1),
   )
   const want = ctx.phase >= 3 ? 3 : 2
@@ -264,7 +266,16 @@ function buildMetcon(ctx: Ctx): WorkoutBlock | null {
     usedPatterns.add(m.pattern)
     const isLoco = m.pattern === 'locomotion'
     const isHold = m.id === 'wall_sit' || m.id === 'plank_bench'
-    const reps = isHold ? '30 sec hold' : isLoco ? '200 m or 1 min' : ctx.phase >= 3 ? '10 reps' : '8 reps'
+    const isCarry = m.pattern === 'carry'
+    const reps = isHold
+      ? '30 sec hold'
+      : isCarry
+        ? '40 m (switch sides halfway)'
+        : isLoco
+          ? '200 m or 1 min'
+          : ctx.phase >= 3
+            ? '10 reps'
+            : '8 reps'
     items.push(toItem(ctx, m, reps))
   }
   if (items.length === 0) return null
