@@ -1,16 +1,19 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react'
 
 export function Card({
   children,
   className = '',
   onClick,
+  ref,
 }: {
   children: ReactNode
   className?: string
   onClick?: () => void
+  ref?: Ref<HTMLDivElement>
 }) {
   return (
     <div
+      ref={ref}
       onClick={onClick}
       className={`rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 ${onClick ? 'cursor-pointer' : ''} ${className}`}
     >
