@@ -345,18 +345,25 @@ function buildWalkIntervals(ctx: Ctx): WorkoutBlock {
 }
 
 function buildLightLegs(ctx: Ctx): WorkoutBlock | null {
+  // Rotate through the safe lower-body / core pool, one movement per pattern,
+  // so the daily leg work varies instead of repeating the same two moves.
+  const pool = ctx.eligible.filter(
+    (m) =>
+      !m.tags?.includes('warmup') &&
+      (m.pattern === 'squat' || m.pattern === 'hinge' || m.pattern === 'core') &&
+      m.impact <= 1,
+  )
   const used = new Set<string>()
+  const usedPatterns = new Set<Pattern>()
   const items: PrescribedItem[] = []
-  const order: Pattern[] = ['squat', 'core']
-  for (const p of order) {
-    const m = pickPattern(ctx, p, used)
-    if (m) items.push(toItem(ctx, m, '1–2 sets × 8–10, slow and controlled'))
-  }
-  // A standing knee-drive / march for a little more.
-  const knee = ctx.eligible.find((m) => m.id === 'standing_marches_core' && !used.has(m.id))
-  if (knee) {
-    used.add(knee.id)
-    items.push(toItem(ctx, knee, '2 sets × 10 each side'))
+  for (let i = 0; i < 3; i++) {
+    let cands = pool.filter((m) => !used.has(m.id) && !usedPatterns.has(m.pattern))
+    if (cands.length === 0) cands = pool.filter((m) => !used.has(m.id))
+    if (cands.length === 0) break
+    const m = sample(cands, ctx.rng)
+    used.add(m.id)
+    usedPatterns.add(m.pattern)
+    items.push(toItem(ctx, m, '1–2 sets × 8–10, slow and controlled'))
   }
   if (items.length === 0) return null
   return {
