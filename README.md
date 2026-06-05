@@ -68,6 +68,23 @@ How privacy is handled:
 
 > Note on sync: it's last-write-wins per device, which is plenty for one person across a phone and laptop. Sign-out keeps the local cache on that device but hides it behind the next sign-in.
 
+## Two modes: patient & caregiver
+
+At sign-in you pick how you'll use HeartStrong:
+
+- **Patient** — your own phased program (below).
+- **Caregiver** — no workout plan; instead you **follow loved ones** who share a code with you.
+
+**Caregiver view (read-only).** A patient creates a share code (Settings → *Share my progress*); a caregiver redeems it (*Follow someone*) and gets a read-only window into how they're doing — enforced by database row-level security, so a caregiver only ever sees people who explicitly shared with them, and can never change anything:
+
+- **Today** — the exact plan their app shows, and whether they logged it (with their effort rating + note).
+- **Progress** — streak, weekly goal, an 8-week consistency trend, a calendar, their notes, and a **flagged-symptom alert** surfacing any days they reported chest pain, palpitations, etc. on the readiness check.
+- **Setup** — their phase, AI on/off, clearance status, equipment, and health profile.
+
+## Health profile
+
+An optional, free-text place (Settings) to record **conditions, current medications, and notes/restrictions from the care team**. It's shown as reminders, surfaced to a caregiver, and given to the AI as *caution context* — the app never interprets it to make clinical decisions, and the safety limits are identical regardless of what's entered.
+
 ## The phase engine
 
 Phase is determined automatically from surgery date + clearance flags (override available in Settings, but the sternal guardrail always holds):
@@ -81,13 +98,16 @@ Each day generates **warmup + workout (strength and/or conditioning) + cooldown*
 
 ## Features
 
-- Daily workout recommendation with coaching cues, scaling options, and suggested dumbbell loads
-- Editable **Equipment** (bench, jump rope, dumbbells w/ editable weights, bodyweight, space)
+- **Daily workout** — warm-up + workout (strength and/or conditioning) + cool-down, with plain-language coaching cues, scaling options, and suggested loads, built only from your equipment
+- **Two modes** — patient (your own recovery) or caregiver (follow a loved one)
+- **AI or built-in** — constantly-varied AI sessions (Claude) with a deterministic offline fallback; both safety-checked identically
+- **Tap-to-define glossary** — fitness jargon (AMRAP, EMOM, RPE, hinge…) is tappable/hoverable for a plain-English definition
+- **Daily readiness check** + an always-visible **warning signs / one-tap Call 911**
+- **Editable equipment** (catalog + custom items) and an optional **health profile** (conditions / meds / care-team notes)
 - **Streaks** (kind by design — logged rest days *freeze* the streak rather than break it), weekly goal, milestones
-- Check off each day, rate effort, add notes
-- **Calendar** history; tap any day for detail or to backfill
-- All data stored **locally on the device** (private, no account, no backend)
-- Installable to a phone home screen (PWA), large-text accessible UI
+- **Calendar history**; check off each day, rate effort, add notes
+- **Accounts + cloud sync** (optional, Supabase) so it follows you across devices — or run fully local & offline with no account
+- Installable to a phone home screen (**PWA**), large-text accessible UI
 
 ---
 
@@ -121,12 +141,14 @@ api/
 supabase/
   schema.sql   table + Row-Level Security policies for per-user cloud data
 src/
-  data/        movements.ts (exercise library), phases.ts (phase defs + weekly schedule), safety.ts (clinical content)
+  data/        movements.ts (exercise library), phases.ts (phase defs + weekly schedule),
+               safety.ts (clinical content), equipment.ts (equipment catalog), glossary.ts (jargon definitions)
   engine/      phase.ts (phase determination), generator.ts (offline workout engine + shared eligibility),
                llm.ts (calls /api/generate), validate.ts (re-validates AI output against the safety rails)
   state/       store.tsx (state + cloud sync, streaks, milestones), auth.tsx (Supabase auth context)
-  lib/         date.ts (date math + seeded RNG), supabase.ts (client; null in local-only mode)
-  components/  Today, WorkoutView, ReadinessCheck, History, Progress, Equipment, Settings, SafetySheet, Onboarding, SignIn, ui
+  lib/         date.ts (date math + seeded RNG), supabase.ts (client; null in local-only mode), care.ts (caregiver sharing)
+  components/  Today, WorkoutView, ReadinessCheck, History, Progress, Equipment, Settings, SafetySheet,
+               Onboarding, SignIn, CaregiverApp, CaregiverView, CareSection, Glossarize, ui
 tools/
   gen-check.ts       engine smoke test — verifies safety guardrails across all phases/weekdays
   validate-check.ts  validator test — proves unsafe AI output (sternal-load, unknown moves, over-cap RPE) is rejected
