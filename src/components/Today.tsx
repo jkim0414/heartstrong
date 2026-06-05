@@ -17,9 +17,12 @@ export function Today() {
   const def = PHASES[phaseResult.phase]
 
   const ai = state.aiCache[today]
+  // A cached AI workout is only valid if it was generated for the current phase
+  // — otherwise (e.g. after sternal precautions lift mid-day) it's stale.
+  const aiFresh = !!ai && ai.phase === phaseResult.phase
   const aiEligible = state.profile.aiEnabled && !override && !deterministic.isRecovery
-  const workout = aiEligible && ai ? ai : deterministic
-  const usingAi = aiEligible && !!ai
+  const workout = aiEligible && aiFresh ? ai : deterministic
+  const usingAi = aiEligible && aiFresh
 
   const [salt, setSalt] = useState(0)
   const [aiLoading, setAiLoading] = useState(false)
@@ -29,7 +32,7 @@ export function Today() {
   const [confirmSternal, setConfirmSternal] = useState(false)
 
   useEffect(() => {
-    if (!aiEligible || ai) return
+    if (!aiEligible || aiFresh) return
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return
     let cancelled = false
     setAiLoading(true)
@@ -42,7 +45,7 @@ export function Today() {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiEligible, ai, today, phaseResult.phase, salt])
+  }, [aiEligible, aiFresh, today, phaseResult.phase, salt])
 
   const regenerate = () => {
     clearAiWorkout(today)
@@ -170,7 +173,7 @@ export function Today() {
 
       {/* Workout */}
       {showWorkout && !entry && (
-        aiLoading && !ai && aiEligible ? (
+        aiLoading && !aiFresh && aiEligible ? (
           <Card className="flex items-center gap-3 p-6">
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-brand-200 border-t-brand-700" />
             <span className="text-base font-semibold text-slate-700">Creating a fresh workout for today…</span>
