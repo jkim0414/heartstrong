@@ -12,7 +12,6 @@ export function Onboarding() {
   const [surgeryDate, setSurgeryDate] = useState('')
   const [cleared, setCleared] = useState(false)
   const [sternal, setSternal] = useState(false)
-  const [rehab, setRehab] = useState(false)
 
   const Header = (
     <div className="mb-6 text-center">
@@ -114,9 +113,8 @@ export function Onboarding() {
         </label>
 
         <div className="space-y-2.5">
-          <Toggle checked={cleared} onChange={setCleared} label="My cardiologist has cleared me to exercise" description="If not yet, that’s okay — we’ll keep to gentle walking until you are." />
-          <Toggle checked={sternal} onChange={setSternal} label="My surgeon lifted my breastbone (sternal) precautions" description="Usually around 6–8 weeks. Until then we keep load off the arms and chest." />
-          <Toggle checked={rehab} onChange={setRehab} label="I’m in (or finished) a cardiac rehab program" description="Supervised cardiac rehab is strongly recommended after bypass surgery." />
+          <Toggle checked={cleared} onChange={setCleared} label="My doctor has said it’s okay to exercise" description="Your cardiologist or cardiac-rehab team gives this go-ahead. Until they do, leave this off — we’ll stick to gentle walking and breathing." />
+          <Toggle checked={sternal} onChange={setSternal} label="My surgeon says I can push, pull, and lift with my arms again" description="After bypass surgery the breastbone needs about 6–8 weeks to heal (your team may call this “sternal precautions”). Leave this off until your surgeon clears you — then we’ll add strength work." />
         </div>
       </Card>
 
@@ -136,7 +134,6 @@ export function Onboarding() {
               surgeryDate: surgeryDate || null,
               clearedForExercise: cleared,
               sternalPrecautionsLifted: sternal,
-              inCardiacRehab: rehab,
               onboarded: true,
             })
           }

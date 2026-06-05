@@ -84,18 +84,20 @@ export function Settings() {
         <Toggle
           checked={p.clearedForExercise}
           onChange={(v) => updateProfile({ clearedForExercise: v })}
-          label="Cleared to exercise by my cardiologist"
+          label="My doctor has said it’s okay to exercise"
+          description="Your cardiologist or cardiac-rehab team gives this go-ahead. Until then, we keep to gentle walking and breathing."
         />
         <Toggle
           checked={p.sternalPrecautionsLifted}
           onChange={(v) => updateProfile({ sternalPrecautionsLifted: v })}
-          label="Sternal (breastbone) precautions lifted"
-          description="Unlocks light resistance training and upper-body work."
+          label="My surgeon says I can push, pull, and lift with my arms again"
+          description="After bypass surgery the breastbone needs ~6–8 weeks to heal (“sternal precautions”). Leave off until your surgeon clears you — turning it on adds strength work."
         />
         <Toggle
           checked={p.inCardiacRehab}
           onChange={(v) => updateProfile({ inCardiacRehab: v })}
-          label="In or completed cardiac rehab"
+          label="Currently in (or finished) cardiac rehab"
+          description="Just for your records and your family’s view — it doesn’t change your workouts."
         />
       </div>
 
