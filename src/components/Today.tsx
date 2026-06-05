@@ -26,6 +26,7 @@ export function Today() {
   const [showWhy, setShowWhy] = useState(false)
   const [completing, setCompleting] = useState(false)
   const [revealed, setRevealed] = useState(false)
+  const [confirmSternal, setConfirmSternal] = useState(false)
 
   useEffect(() => {
     if (!aiEligible || ai) return
@@ -75,6 +76,44 @@ export function Today() {
         </Card>
       )}
 
+      {/* Sternal-precautions prompt — the one transition that needs a human tap */}
+      {state.profile.clearedForExercise && !state.profile.sternalPrecautionsLifted && (
+        <Card className="border-l-4 border-amber-500 bg-amber-50 p-4">
+          <p className="text-base font-semibold text-amber-900">Has your surgeon cleared your breastbone?</p>
+          <p className="mt-1 text-sm text-amber-900">
+            You’re in the gentle phase while the breastbone heals — usually about 6–8 weeks
+            {phaseResult.weeksPostOp != null ? ` (you’re at week ${phaseResult.weeksPostOp})` : ''}. When your surgeon
+            says it’s healed, mark it here to unlock strength training.
+          </p>
+          {!confirmSternal ? (
+            <Button variant="secondary" className="mt-2 !py-2 !text-sm" onClick={() => setConfirmSternal(true)}>
+              My surgeon cleared it
+            </Button>
+          ) : (
+            <div className="mt-2 space-y-2">
+              <p className="text-sm font-semibold text-amber-900">
+                This unlocks pushing, pulling, and lifting with your arms. Has your surgeon confirmed the breastbone is healed?
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="success"
+                  className="!py-2 !text-sm"
+                  onClick={() => {
+                    updateProfile({ sternalPrecautionsLifted: true })
+                    setConfirmSternal(false)
+                  }}
+                >
+                  Yes — unlock strength
+                </Button>
+                <Button variant="ghost" className="!py-2 !text-sm" onClick={() => setConfirmSternal(false)}>
+                  Not yet
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Summary — compact, with collapsible "why" */}
       <Card>
         <div className="rounded-t-2xl bg-gradient-to-br from-brand-700 to-brand-800 p-4 text-white">
@@ -105,11 +144,6 @@ export function Today() {
             <p className="text-sm text-slate-600">{phaseResult.reason}</p>
             {phaseResult.nudge && <p className="text-sm font-medium text-brand-800">💡 {phaseResult.nudge}</p>}
             {phaseResult.weeksPostOp != null && <p className="text-xs text-slate-400">Week {phaseResult.weeksPostOp} post-op</p>}
-            {!state.profile.sternalPrecautionsLifted && state.profile.clearedForExercise && (
-              <Button variant="secondary" className="!py-2 !text-sm" onClick={() => updateProfile({ sternalPrecautionsLifted: true })}>
-                My surgeon lifted sternal precautions
-              </Button>
-            )}
           </div>
         )}
       </Card>
