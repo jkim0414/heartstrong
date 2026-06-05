@@ -93,12 +93,6 @@ export function Settings() {
           label="My surgeon says I can push, pull, and lift with my arms again"
           description="After bypass surgery the breastbone needs ~6–8 weeks to heal (“sternal precautions”). Leave off until your surgeon clears you — turning it on adds strength work."
         />
-        <Toggle
-          checked={p.inCardiacRehab}
-          onChange={(v) => updateProfile({ inCardiacRehab: v })}
-          label="Currently in (or finished) cardiac rehab"
-          description="Just for your records and your family’s view — it doesn’t change your workouts."
-        />
       </div>
 
       <SectionTitle>Health profile (optional)</SectionTitle>

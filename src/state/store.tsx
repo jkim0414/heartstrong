@@ -24,7 +24,6 @@ const DEFAULT_PROFILE: Profile = {
   surgeryDate: null,
   clearedForExercise: false,
   sternalPrecautionsLifted: false,
-  inCardiacRehab: false,
   phaseOverride: null,
   onboarded: false,
   aiEnabled: true,

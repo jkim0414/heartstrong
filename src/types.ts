@@ -132,8 +132,6 @@ export interface Profile {
   clearedForExercise: boolean
   /** Surgeon has lifted sternal precautions (cleared for upper-body loading). */
   sternalPrecautionsLifted: boolean
-  /** Enrolled in or completed a supervised cardiac rehab program. */
-  inCardiacRehab: boolean
   /** Manual phase override (advanced; otherwise auto from dates). null = auto. */
   phaseOverride: PhaseId | null
   /** Whether onboarding has been completed. */

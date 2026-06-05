@@ -266,7 +266,6 @@ function SetupTab({ state, weeksPostOp, phaseName, overridden }: { state: AppSta
       <Section title="Medical clearance">
         <Row label="Cleared to exercise" value={p.clearedForExercise ? 'Yes' : 'No'} good={p.clearedForExercise} warn={!p.clearedForExercise} />
         <Row label="Sternal precautions lifted" value={p.sternalPrecautionsLifted ? 'Yes' : 'No'} />
-        <Row label="In cardiac rehab" value={p.inCardiacRehab ? 'Yes' : 'No'} />
       </Section>
 
       <Section title="Training">
