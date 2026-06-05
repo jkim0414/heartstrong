@@ -9,7 +9,7 @@ import type {
   WorkoutBlock,
   ISODate,
 } from '../types'
-import { MOVEMENTS } from '../data/movements'
+import { MOVEMENTS, MOVEMENTS_BY_ID } from '../data/movements'
 import { PHASES, WEEKLY_SCHEDULE, type Archetype } from '../data/phases'
 import { hashStr, mulberry32, weekday, weeksSince } from '../lib/date'
 
@@ -34,6 +34,24 @@ interface Ctx {
   loads: Record<string, number[]>
   weeksPostOp: number
   eligible: Movement[]
+  /** Loaded patterns emphasized recently (prior day) — steer away from these. */
+  recentPatterns: Set<Pattern>
+}
+
+/** Patterns whose back-to-back repetition is worth avoiding (Phase 3+). */
+export const LOADED_PATTERNS: Pattern[] = ['squat', 'hinge', 'push', 'pull', 'lunge', 'carry']
+
+/** The loaded movement patterns used in a workout's strength/conditioning blocks. */
+export function loadedPatternsOf(workout: Workout): Pattern[] {
+  const out = new Set<Pattern>()
+  for (const b of workout.blocks) {
+    if (b.block !== 'strength' && b.block !== 'metcon') continue
+    for (const it of b.items) {
+      const m = MOVEMENTS_BY_ID[it.movementId]
+      if (m && LOADED_PATTERNS.includes(m.pattern)) out.add(m.pattern)
+    }
+  }
+  return [...out]
 }
 
 export function ownedSet(equipment: EquipmentItem[]): Set<string> {
@@ -219,7 +237,13 @@ function buildStrength(ctx: Ctx, count: number): WorkoutBlock | null {
   const used = new Set<string>()
   const items: PrescribedItem[] = []
   // Pattern priority: legs first (always safe & high value), then upper, then accessory.
-  const order: Pattern[] = ['squat', 'hinge', 'push', 'pull', 'lunge', 'core', 'carry']
+  const base: Pattern[] = ['squat', 'hinge', 'push', 'pull', 'lunge', 'core', 'carry']
+  // Recovery-aware rotation (Phase 3+): push patterns that were emphasized
+  // yesterday to the back so today leads with fresh, non-overlapping ones.
+  const order: Pattern[] = [
+    ...base.filter((p) => !ctx.recentPatterns.has(p)),
+    ...base.filter((p) => ctx.recentPatterns.has(p)),
+  ]
   for (const p of order) {
     if (items.length >= count) break
     const m = pickStrengthPattern(ctx, p, used)
@@ -257,8 +281,12 @@ function buildMetcon(ctx: Ctx): WorkoutBlock | null {
   const want = ctx.phase >= 3 ? 3 : 2
   const usedPatterns = new Set<Pattern>()
   for (let i = 0; i < want && candidates.length > 0; i++) {
-    // Prefer movements whose pattern hasn't been used yet (variety); relax if needed.
-    let pool = candidates.filter((m) => !used.has(m.id) && !usedPatterns.has(m.pattern))
+    // Prefer movements whose pattern is fresh today AND wasn't emphasized
+    // yesterday (Phase 3+ recovery-aware rotation); relax in tiers if needed.
+    let pool = candidates.filter(
+      (m) => !used.has(m.id) && !usedPatterns.has(m.pattern) && !ctx.recentPatterns.has(m.pattern),
+    )
+    if (pool.length === 0) pool = candidates.filter((m) => !used.has(m.id) && !usedPatterns.has(m.pattern))
     if (pool.length === 0) pool = candidates.filter((m) => !used.has(m.id))
     if (pool.length === 0) break
     const m = sample(pool, ctx.rng)
@@ -389,6 +417,7 @@ export function generateWorkout(
   profile: Profile,
   equipment: EquipmentItem[],
   forceArchetype?: Archetype,
+  recentPatterns: Pattern[] = [],
 ): Workout {
   const owned = ownedSet(equipment)
   const sternalOk = profile.sternalPrecautionsLifted
@@ -400,6 +429,8 @@ export function generateWorkout(
     loads: loadableLoads(equipment),
     weeksPostOp: profile.surgeryDate ? weeksSince(profile.surgeryDate, date) : 8,
     eligible,
+    // Only steer away from recent patterns once there's real load to manage.
+    recentPatterns: new Set(phase >= 3 ? recentPatterns : []),
   }
 
   const def = PHASES[phase]

@@ -4,10 +4,11 @@ import type {
   DayStatus,
   EquipmentItem,
   ISODate,
+  Pattern,
   Profile,
   Workout,
 } from '../types'
-import { generateWorkout } from '../engine/generator'
+import { generateWorkout, loadedPatternsOf } from '../engine/generator'
 import { determinePhase, type PhaseResult } from '../engine/phase'
 import { addDays, todayISO } from '../lib/date'
 import { defaultEquipment } from '../data/equipment'
@@ -205,6 +206,8 @@ interface Store {
   phaseResult: PhaseResult
   stats: Stats
   workoutFor: (date: ISODate) => Workout
+  /** Loaded movement patterns emphasized the day before `date` (Phase 3+ only; else empty). */
+  recentPatternsFor: (date: ISODate) => Pattern[]
   setDayStatus: (date: ISODate, status: DayStatus, extras?: { notes?: string; feltRpe?: number; workoutTitle?: string }) => void
   clearDay: (date: ISODate) => void
   setOverride: (date: ISODate, ov: 'easier' | 'rest' | null) => void
@@ -285,11 +288,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const stats = useMemo(() => computeStats(state, today), [state, today])
 
   const store: Store = useMemo(() => {
+    // Loaded patterns emphasized the day before `date` — drives cross-day
+    // rotation. Gated to Phase 3+ (no point steering gentle recovery work).
+    // Reads yesterday's cached AI workout if present, else regenerates it
+    // WITHOUT recentPatterns to avoid infinite recursion.
+    const recentPatternsFor = (date: ISODate): Pattern[] => {
+      const pr = determinePhase(state.profile, date)
+      if (pr.phase < 3 || state.profile.phaseOverride != null) return []
+      const prev = addDays(date, -1)
+      // Skip if yesterday was a rest day — nothing to recover from.
+      if (state.log[prev]?.status === 'rest' || state.overrides[prev] === 'rest') return []
+      const cachedAi = state.aiCache[prev]
+      const prevPr = determinePhase(state.profile, prev)
+      const yesterday =
+        cachedAi && cachedAi.phase === prevPr.phase
+          ? cachedAi
+          : generateWorkout(prev, prevPr.phase, state.profile, state.equipment)
+      return loadedPatternsOf(yesterday)
+    }
+
     const workoutFor = (date: ISODate): Workout => {
       const pr = determinePhase(state.profile, date)
       const ov = state.overrides[date]
       const force = ov === 'rest' ? 'rest' : ov === 'easier' ? 'recovery_mobility' : undefined
-      return generateWorkout(date, pr.phase, state.profile, state.equipment, force)
+      const recent = force ? [] : recentPatternsFor(date)
+      return generateWorkout(date, pr.phase, state.profile, state.equipment, force, recent)
     }
 
     return {
@@ -298,6 +321,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       phaseResult,
       stats,
       workoutFor,
+      recentPatternsFor,
       setDayStatus: (date, status, extras) =>
         setState((s) => ({
           ...s,

@@ -1,4 +1,4 @@
-import type { EquipmentItem, ISODate, PhaseId, Profile, RawAiWorkout, Workout } from '../types'
+import type { EquipmentItem, ISODate, Pattern, PhaseId, Profile, RawAiWorkout, Workout } from '../types'
 import { PHASES, WEEKLY_SCHEDULE } from '../data/phases'
 import { getEligibleMovements, loadableLoads } from './generator'
 import { validateAiWorkout } from './validate'
@@ -23,6 +23,8 @@ export interface AiRequest {
   /** Owned loadable equipment id -> available weights (lb). */
   loads: Record<string, number[]>
   recentTitles: string[]
+  /** Loaded movement patterns emphasized yesterday — steer today's emphasis away from these. */
+  recentPatterns: Pattern[]
   /** The ONLY movements the model may use — already safety-filtered. */
   movements: { id: string; name: string; pattern: string; cue: string }[]
   /** Optional health background, for caution context only. */
@@ -41,6 +43,7 @@ function buildRequest(
   profile: Profile,
   equipment: EquipmentItem[],
   recentTitles: string[],
+  recentPatterns: Pattern[],
   salt: number,
 ): AiRequest {
   const def = PHASES[phase]
@@ -63,6 +66,7 @@ function buildRequest(
     suggestedFocus: WEEKLY_SCHEDULE[phase][weekday(date)],
     loads: loadableLoads(equipment),
     recentTitles: recentTitles.slice(0, 10),
+    recentPatterns: phase >= 3 ? recentPatterns : [],
     movements,
     conditions: profile.conditions || undefined,
     medications: profile.medications || undefined,
@@ -82,10 +86,11 @@ export async function fetchAiWorkout(
   profile: Profile,
   equipment: EquipmentItem[],
   recentTitles: string[],
+  recentPatterns: Pattern[] = [],
   salt = 0,
 ): Promise<Workout | null> {
   try {
-    const body = buildRequest(date, phase, profile, equipment, recentTitles, salt)
+    const body = buildRequest(date, phase, profile, equipment, recentTitles, recentPatterns, salt)
     const token = await getAccessToken()
     const res = await fetch(ENDPOINT, {
       method: 'POST',

@@ -96,6 +96,8 @@ Phase is determined automatically from surgery date + clearance flags (override 
 
 Each day generates **warmup + workout (strength and/or conditioning) + cooldown**, drawn only from the user's available equipment, deterministic per day (stable once viewed) but varied across days.
 
+**Recovery-aware rotation (Phase 3+).** From the Build phase on — once there's real load to manage — the engine looks at the loaded movement patterns (squat, hinge, push, pull, lunge, carry) it emphasized the day before and steers today *away* from them: it re-orders strength priority so freshly-rested patterns lead, and biases conditioning selection toward different patterns before relaxing. The same "patterns emphasized yesterday" hint is passed to the AI so it does the same. It degrades gracefully (if the only sensible movements overlap, it still uses them) and skips entirely after a logged rest day. In early phases, where building familiarity with a small set of movements matters more than novelty, this is off.
+
 ## Features
 
 - **Daily workout** — warm-up + workout (strength and/or conditioning) + cool-down, with plain-language coaching cues, scaling options, and suggested loads, built only from your equipment

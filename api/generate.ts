@@ -19,6 +19,7 @@ interface ReqBody {
   suggestedFocus: string
   loads: Record<string, number[]>
   recentTitles: string[]
+  recentPatterns?: string[]
   movements: { id: string; name: string; pattern: string; cue: string }[]
   conditions?: string
   medications?: string
@@ -147,6 +148,7 @@ Upper-body/chest loading allowed today: ${body.allowsSternalLoad ? 'yes' : 'NO â
 Rough focus for this weekday: ${body.suggestedFocus}
 Loadable equipment he owns (use these weights for loadLb): ${Object.keys(body.loads).length ? Object.entries(body.loads).map(([k, v]) => `${k}: ${v.join('/')} lb`).join('; ') : 'none'}
 Recent session titles (make today feel different): ${body.recentTitles.length ? body.recentTitles.join('; ') : 'none yet'}
+Movement patterns emphasized yesterday (for recovery, steer today's main load AWAY from these â€” lead with different patterns and don't re-stack the same heavy ones): ${body.recentPatterns?.length ? body.recentPatterns.join(', ') : 'none / unknown'}
 Variation seed: ${body.salt}
 
 Movements you may use today (use the exact id):

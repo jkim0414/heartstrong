@@ -9,7 +9,7 @@ import { fetchAiWorkout } from '../engine/llm'
 import { Glossarize } from './Glossarize'
 
 export function Today() {
-  const { today, workoutFor, phaseResult, state, stats, setDayStatus, clearDay, setOverride, updateProfile, setAiWorkout, clearAiWorkout, recentTitles } = useStore()
+  const { today, workoutFor, phaseResult, state, stats, setDayStatus, clearDay, setOverride, updateProfile, setAiWorkout, clearAiWorkout, recentTitles, recentPatternsFor } = useStore()
   const deterministic = workoutFor(today)
   const entry = state.log[today]
   const readiness = state.readiness[today]
@@ -36,7 +36,7 @@ export function Today() {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return
     let cancelled = false
     setAiLoading(true)
-    fetchAiWorkout(today, phaseResult.phase, state.profile, state.equipment, recentTitles(), salt).then((w) => {
+    fetchAiWorkout(today, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(today), salt).then((w) => {
       if (cancelled) return
       if (w) setAiWorkout(today, w)
       setAiLoading(false)
