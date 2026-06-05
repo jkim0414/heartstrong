@@ -252,6 +252,17 @@ function SetupTab({ state, weeksPostOp, phaseName, overridden }: { state: AppSta
         <Row label="Using app as" value={p.role === 'caregiver' ? 'Caregiver' : 'Patient'} />
       </Section>
 
+      {(p.conditions || p.medications || p.careNotes) && (
+        <div>
+          <p className="px-1 pb-2 text-sm font-bold uppercase tracking-wide text-slate-500">Health profile</p>
+          <Card className="divide-y divide-slate-100">
+            {p.conditions && <Stacked label="Conditions" text={p.conditions} />}
+            {p.medications && <Stacked label="Medications" text={p.medications} />}
+            {p.careNotes && <Stacked label="Care-team notes / avoid" text={p.careNotes} />}
+          </Card>
+        </div>
+      )}
+
       <Section title="Medical clearance">
         <Row label="Cleared to exercise" value={p.clearedForExercise ? 'Yes' : 'No'} good={p.clearedForExercise} warn={!p.clearedForExercise} />
         <Row label="Sternal precautions lifted" value={p.sternalPrecautionsLifted ? 'Yes' : 'No'} />
@@ -283,6 +294,15 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
     <div>
       <p className="px-1 pb-2 text-sm font-bold uppercase tracking-wide text-slate-500">{title}</p>
       <Card className="divide-y divide-slate-100">{children}</Card>
+    </div>
+  )
+}
+
+function Stacked({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-1 whitespace-pre-wrap text-base text-slate-800">{text}</p>
     </div>
   )
 }

@@ -140,6 +140,16 @@ export interface Profile {
   onboarded: boolean
   /** Use the AI workout generator (online) instead of the built-in engine. */
   aiEnabled: boolean
+  /**
+   * Optional free-text health context (entered by the user or a caregiver).
+   * Shown as reminders and given to the AI generator as background so it stays
+   * appropriately cautious. NOT interpreted by the app to make clinical
+   * decisions — the safety rails are the same regardless of what's here.
+   */
+  conditions?: string
+  medications?: string
+  /** Notes from the care team / things to avoid. */
+  careNotes?: string
 }
 
 /** Raw shape the AI endpoint returns; validated before use. */

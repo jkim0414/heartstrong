@@ -20,6 +20,9 @@ interface ReqBody {
   loads: Record<string, number[]>
   recentTitles: string[]
   movements: { id: string; name: string; pattern: string; cue: string }[]
+  conditions?: string
+  medications?: string
+  careNotes?: string
   salt: number
 }
 
@@ -27,7 +30,7 @@ const MODEL = 'claude-sonnet-4-6'
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
 // Static safety doctrine — stable across requests, so we cache it.
-const SYSTEM_DOCTRINE = `You are a cardiac-rehabilitation-aware strength & conditioning coach building ONE day's workout for a 66-year-old man recovering from quadruple bypass (CABG) surgery. He also has a prior heart attack with stents, type 2 diabetes, high blood pressure, and is on a beta-blocker (carvedilol), an alpha-blocker (terazosin), and dual antiplatelet therapy. He is deconditioned but progressing.
+const SYSTEM_DOCTRINE = `You are a cardiac-rehabilitation-aware strength & conditioning coach building ONE day's workout for an older adult recovering from heart surgery or a cardiac event. They are deconditioned but progressing, and are typically on cardiac medications (often a beta-blocker and blood thinners). Specific background about this person may be provided in the user message — use it only to stay appropriately cautious; it NEVER overrides the safety rules below.
 
 The product philosophy is "scaled CrossFit" — constantly varied, genuinely effective training that moves the needle on strength and conditioning over time — NOT timid post-op physical therapy. Be creative and varied with FORMATS and STRUCTURE so no two days feel the same: mix AMRAPs, EMOMs, rounds-for-time, intervals, ascending/descending rep ladders, chippers, "every 3 minutes", steady aerobic pieces, and benchmark-style themed sessions. Give the session an engaging title.
 
@@ -37,7 +40,7 @@ KEEP IT SIMPLE AND SHORT: Write for a 66-year-old beginner. Use short, plain sen
 
 ABSOLUTE SAFETY RULES (never violate):
 1. Use ONLY movements from the provided list, referenced by their exact "id". Never invent movements. The list is already filtered for what is safe at his current phase and sternal-precaution status — if a movement is not in the list, he may not do it today.
-2. Intensity is judged by perceived effort (RPE 0-10) and the talk test, NEVER heart rate (his beta-blocker makes heart rate unreliable). Keep the whole session within the given rpeLow..rpeHigh range. Never program "to failure" or maximal effort.
+2. Intensity is judged by perceived effort (RPE 0-10) and the talk test, NEVER heart rate (cardiac medications such as beta-blockers make heart rate an unreliable intensity guide). Keep the whole session within the given rpeLow..rpeHigh range. Never program "to failure" or maximal effort.
 3. Every non-recovery session MUST include a "warmup" block first and a "cooldown" block last. Strength and/or conditioning go in between.
 4. Suggested dumbbell loads must come from the loads he owns. Lighter loads for overhead/pressing.
 5. Keep total time roughly 20-45 minutes (recovery days shorter).
@@ -127,8 +130,16 @@ export default async function handler(req: any, res: any) {
   try {
     const body: ReqBody = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
 
-    const userContent = `Build today's workout.
+    const bg: string[] = []
+    if (body.conditions) bg.push(`Conditions: ${body.conditions}`)
+    if (body.medications) bg.push(`Medications: ${body.medications}`)
+    if (body.careNotes) bg.push(`Care-team notes / things to avoid: ${body.careNotes}`)
+    const background = bg.length
+      ? `\nBackground about this person (for caution only — does NOT override the safety rules; do not prescribe around individual drugs, just stay conservative and never contradict these notes):\n${bg.join('\n')}\n`
+      : ''
 
+    const userContent = `Build today's workout.
+${background}
 Date: ${body.date} (${body.weekdayName})
 Phase: ${body.phaseName} — ${body.phaseTagline}
 Target effort: RPE ${body.rpeLow}–${body.rpeHigh}. Talk test: ${body.talkTest}

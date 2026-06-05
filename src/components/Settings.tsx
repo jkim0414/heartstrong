@@ -99,6 +99,18 @@ export function Settings() {
         />
       </div>
 
+      <SectionTitle>Health profile (optional)</SectionTitle>
+      <Card className="space-y-4 p-5">
+        <p className="text-sm text-slate-600">
+          Adding your conditions, medications, and any guidance from your care team helps the workout coach stay aware
+          of your situation. It’s shown as reminders and given to the AI as background — it’s <span className="font-semibold">not</span> medical
+          advice, and the safety limits stay the same regardless.
+        </p>
+        <HealthField label="Conditions" placeholder="e.g. bypass surgery May 2026, type 2 diabetes, high blood pressure, CKD…" value={p.conditions ?? ''} onSave={(v) => updateProfile({ conditions: v })} />
+        <HealthField label="Current medications" placeholder="e.g. aspirin, clopidogrel, metoprolol, atorvastatin, nitroglycerin as needed…" value={p.medications ?? ''} onSave={(v) => updateProfile({ medications: v })} />
+        <HealthField label="Notes from my care team / things to avoid" placeholder="e.g. in cardiac rehab; keep breastbone precautions until surgeon clears; carries nitroglycerin…" value={p.careNotes ?? ''} onSave={(v) => updateProfile({ careNotes: v })} />
+      </Card>
+
       <SectionTitle>Workout generation</SectionTitle>
       <div className="space-y-2.5">
         <Toggle
@@ -173,5 +185,22 @@ export function Settings() {
 
       <p className="px-1 pb-2 text-center text-xs text-slate-400">HeartStrong · built with care ❤️</p>
     </div>
+  )
+}
+
+function HealthField({ label, placeholder, value, onSave }: { label: string; placeholder: string; value: string; onSave: (v: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  return (
+    <label className="block">
+      <span className="text-base font-semibold text-slate-800">{label}</span>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => draft !== value && onSave(draft.trim())}
+        rows={3}
+        placeholder={placeholder}
+        className="mt-2 w-full rounded-xl border-0 bg-slate-100 px-4 py-3 text-base ring-1 ring-slate-200 focus:ring-2 focus:ring-brand-500"
+      />
+    </label>
   )
 }

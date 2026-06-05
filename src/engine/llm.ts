@@ -25,6 +25,10 @@ export interface AiRequest {
   recentTitles: string[]
   /** The ONLY movements the model may use — already safety-filtered. */
   movements: { id: string; name: string; pattern: string; cue: string }[]
+  /** Optional health background, for caution context only. */
+  conditions?: string
+  medications?: string
+  careNotes?: string
   /** Whether the model should consider salting for a fresh variation. */
   salt: number
 }
@@ -60,6 +64,9 @@ function buildRequest(
     loads: loadableLoads(equipment),
     recentTitles: recentTitles.slice(0, 10),
     movements,
+    conditions: profile.conditions || undefined,
+    medications: profile.medications || undefined,
+    careNotes: profile.careNotes || undefined,
     salt,
   }
 }
