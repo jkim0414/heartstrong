@@ -10,17 +10,17 @@ It is **not** post-op physical therapy and **not** generic CrossFit. It's a phas
 
 ## Why it's built the way it is (the clinical reasoning)
 
-The design reflects common considerations for someone recovering from bypass surgery or a heart attack. (It was originally tailored to one person's situation; the reasoning below is general.)
+The design reflects common considerations for someone recovering from bypass surgery or a heart attack. The scenarios below are general and illustrative — every person's situation is different, which is why the app takes the relevant details as input (clearances, equipment, an optional health profile) rather than hard-coding any one chart.
 
 | Clinical consideration | What the app does about it |
 | --- | --- |
-| **On carvedilol (a beta-blocker)** — blunts and caps heart rate | Drives all intensity by **RPE (perceived exertion) + the talk test**, never heart-rate zones. Fitness-tracker "zones" are unreliable on this medication. |
-| **~1 month post-sternotomy** — breastbone still healing (sternal precautions, usually 6–8 wks) | **Phase 1 loads nothing through the arms/chest.** Chest-loading movements (presses, rows, push-ups, carries, planks) are *hard-locked* until you mark sternal precautions lifted — this guardrail can't be overridden, even by a manual phase change. |
-| **On aspirin + ticagrelor (dual antiplatelet)** — bleeding/bruising risk | Impact and fall-risk movements are minimized; jumping only appears in later phases and is always optional. |
-| **On terazosin (alpha-blocker) + carvedilol** — orthostatic hypotension risk | Every session ends with a full cool-down and a "rise slowly" reminder. |
-| **Type 2 diabetes** | Hypoglycemia + foot-care reminders in the Safety sheet. |
-| **EF 60% (preserved), no heart failure, no arrhythmia** | Good prognosis → the program is allowed to *progress* into real strength + conditioning, not stay in rehab mode forever. |
-| Cardiac rehab is the gold standard after CABG | The app actively nudges toward formal clearance and a supervised cardiac-rehab referral; it complements rehab, doesn't replace it. |
+| **On a beta-blocker** — blunts and caps heart rate | Drives all intensity by **RPE (perceived exertion) + the talk test**, never heart-rate zones. Fitness-tracker "zones" are unreliable on these medications. |
+| **Recent sternotomy** — breastbone still healing (sternal precautions, usually 6–8 wks) | **Phase 1 loads nothing through the arms/chest.** Chest-loading movements (presses, rows, push-ups, carries, planks) are *hard-locked* until you mark sternal precautions lifted — this guardrail can't be overridden, even by a manual phase change. |
+| **On dual antiplatelet therapy** (e.g. aspirin + a P2Y12 inhibitor) — bleeding/bruising risk | Impact and fall-risk movements are minimized; jumping only appears in later phases and is always optional. |
+| **Medications that can drop blood pressure on standing** (e.g. alpha-blockers, some blood-pressure drugs) — orthostatic hypotension risk | Every session ends with a full cool-down and a "rise slowly" reminder. |
+| **Common comorbidities** (e.g. type 2 diabetes) | Hypoglycemia + foot-care reminders in the Safety sheet. |
+| **Preserved ejection fraction, no heart failure or arrhythmia** | Good prognosis → the program is allowed to *progress* into real strength + conditioning, not stay in rehab mode forever. |
+| Cardiac rehab is the gold standard after a cardiac event | The app actively nudges toward formal clearance and a supervised cardiac-rehab referral; it complements rehab, doesn't replace it. |
 
 A daily **readiness check** (chest symptoms, breathlessness, dizziness, palpitations, incision pain, feeling unwell, swelling) gates each workout and recommends rest if anything is flagged. An always-visible **Warning signs** button lists stop-now symptoms and a one-tap **Call 911**.
 

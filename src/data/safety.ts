@@ -1,9 +1,11 @@
 // ---------------------------------------------------------------------------
 // Safety content. This is education and encouragement — NOT medical advice.
 // The thresholds here reflect standard cardiac-rehab guidance (AACVPR / AHA)
-// and post-sternotomy precautions, tailored to this user's medication profile
-// (beta-blocker -> use RPE not heart rate; alpha-blocker -> orthostatic care;
-// dual antiplatelet -> avoid impact/fall risk; diabetes -> hypoglycemia/foot care).
+// and post-sternotomy precautions, written for the medication classes common
+// after a cardiac event (beta-blocker -> use RPE not heart rate; alpha-blocker
+// -> orthostatic care; dual antiplatelet -> avoid impact/fall risk; diabetes
+// -> hypoglycemia/foot care). Phrasing is conditional ("if you take…") so it
+// applies generally; anything personal lives in the user's health profile.
 // ---------------------------------------------------------------------------
 
 /** Symptoms that mean STOP exercising now. */
@@ -44,9 +46,9 @@ export const RPE_SCALE: RpeAnchor[] = [
   { rpe: 10, label: 'Maximal', feels: 'All-out — do not go here', talk: 'Cannot talk' },
 ]
 
-/** Why we use RPE instead of heart rate for this user. */
+/** Why we use RPE instead of heart rate. */
 export const RPE_EXPLAINER =
-  'You take a beta-blocker (carvedilol), which lowers and "caps" your heart rate. That makes heart-rate targets and most fitness-tracker zones unreliable for you. Instead, judge effort by how you feel and the talk test — it is the method cardiac-rehab teams use for people on these medications.'
+  'If you take a beta-blocker (common after a cardiac event), it lowers and "caps" your heart rate. That makes heart-rate targets and most fitness-tracker zones unreliable. Instead, judge effort by how you feel and the talk test — it is the method cardiac-rehab teams use for people on these medications.'
 
 /** Pre-workout readiness questions. "Yes" to any = recommend resting today. */
 export const READINESS_QUESTIONS: { id: string; q: string }[] = [
@@ -62,12 +64,12 @@ export const READINESS_QUESTIONS: { id: string; q: string }[] = [
 export const READINESS_FAIL_MESSAGE =
   'Based on what you told me, today is a good day to rest. Take it easy, and let your cardiology team know about anything new — especially chest symptoms, unusual breathlessness, or swelling. You can still log today as a rest day; your streak is safe.'
 
-/** Standing reminders tailored to this user's medications and conditions. */
+/** Standing reminders for the medication classes and conditions common after a cardiac event. */
 export const MED_REMINDERS: { title: string; body: string }[] = [
   {
     title: 'Cool down fully — don’t stop suddenly',
     body:
-      'Your blood-pressure medications (carvedilol and terazosin) can make you lightheaded if you stop moving abruptly or stand up quickly. Always finish with the cooldown walk, and rise slowly afterward.',
+      'Some common heart and blood-pressure medications (such as beta-blockers and alpha-blockers) can make you lightheaded if you stop moving abruptly or stand up quickly. Always finish with the cooldown walk, and rise slowly afterward.',
   },
   {
     title: 'Protect your chest while it heals',
@@ -77,17 +79,17 @@ export const MED_REMINDERS: { title: string; body: string }[] = [
   {
     title: 'Mind your blood sugar',
     body:
-      'With diabetes, keep a fast-acting carb (juice or glucose tabs) nearby, especially if it has been a while since you ate. If you feel shaky, sweaty, or confused, stop and treat it.',
+      'If you have diabetes, keep a fast-acting carb (juice or glucose tabs) nearby, especially if it has been a while since you ate. If you feel shaky, sweaty, or confused, stop and treat it.',
   },
   {
     title: 'Avoid falls and hard knocks',
     body:
-      'Your blood thinners (aspirin + ticagrelor) make bruising and bleeding easier. We keep impact and balance-risk low for this reason. Use stable surfaces and good shoes.',
+      'Blood thinners and antiplatelet medications (common after a cardiac event) make bruising and bleeding easier. We keep impact and balance-risk low for this reason. Use stable surfaces and good shoes.',
   },
   {
     title: 'Check your feet and shoes',
     body:
-      'Diabetes can dull foot sensation. Wear supportive shoes and glance at your feet for blisters or sores after exercise.',
+      'If you have diabetes, it can dull foot sensation. Wear supportive shoes and glance at your feet for blisters or sores after exercise.',
   },
   {
     title: 'Pick your moment',
