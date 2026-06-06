@@ -359,7 +359,12 @@ function buildEasyWalk(ctx: Ctx, kind: 'easy' | 'main'): WorkoutBlock {
 
 function buildWalkIntervals(ctx: Ctx): WorkoutBlock {
   const walk = locomotion(ctx)
-  const rounds = 5 + Math.min(ctx.weeksPostOp, 4)
+  // Target ~12–18 min of intervals (3 min each) so the whole Phase-1 session
+  // stays in the sustainable ~25–30 min band. It still progresses with weeks
+  // post-op, then caps — daily walking on top is encouraged separately, since
+  // consistency matters more than piling minutes into one session.
+  const targetMin = 12 + Math.min(ctx.weeksPostOp, 6)
+  const rounds = Math.max(4, Math.round(targetMin / 3))
   return {
     block: 'metcon',
     title: 'Walk intervals',
