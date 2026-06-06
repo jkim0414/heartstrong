@@ -28,11 +28,11 @@ function BlockCard({ block }: { block: WorkoutBlock }) {
       <ul className="mt-3 divide-y divide-slate-100">
         {block.items.map((item, i) => (
           <li key={i} className="py-3">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-base font-semibold text-slate-900">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span className="min-w-0 break-words text-base font-semibold text-slate-900">
                 <Glossarize text={item.name} />
               </span>
-              <span className="shrink-0 text-right text-base font-semibold text-brand-700">
+              <span className="min-w-0 break-words text-right text-base font-semibold text-brand-700">
                 {item.dose}
                 {item.loadLb != null && <span className="block text-sm text-slate-500">{item.loadLb} lb</span>}
               </span>
