@@ -1,5 +1,6 @@
 import { generateWorkout } from '../src/engine/generator'
 import { determinePhase } from '../src/engine/phase'
+import { alternatingRepsAreEven, estimateWorkoutMinutes } from '../src/engine/normalize'
 import { MOVEMENTS_BY_ID } from '../src/data/movements'
 import type { EquipmentItem, Profile } from '../src/types'
 
@@ -65,6 +66,21 @@ for (const s of scenarios) {
           problems++
         }
       }
+    }
+    // Invariant: alternating movements must have an even total rep count.
+    for (const b of w.blocks) {
+      for (const it of b.items) {
+        if (!alternatingRepsAreEven(it)) {
+          console.log(`    !!! VIOLATION: alternating "${it.name}" has odd reps: "${it.dose}"`)
+          problems++
+        }
+      }
+    }
+    // Invariant: the displayed time estimate matches the prescription.
+    const recomputed = estimateWorkoutMinutes(w.blocks, w.isRecovery)
+    if (w.estMinutes !== recomputed) {
+      console.log(`    !!! VIOLATION: estMinutes ${w.estMinutes} != recomputed ${recomputed}`)
+      problems++
     }
   }
 }

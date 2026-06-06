@@ -10,6 +10,7 @@ import type {
   ISODate,
 } from '../types'
 import { MOVEMENTS, MOVEMENTS_BY_ID } from '../data/movements'
+import { normalizeWorkout } from './normalize'
 import { PHASES, WEEKLY_SCHEDULE, type Archetype } from '../data/phases'
 import { hashStr, mulberry32, weekday, weeksSince } from '../lib/date'
 
@@ -545,29 +546,18 @@ export function generateWorkout(
     add(buildEasyWalk(ctx, 'main'))
   }
 
-  const estMinutes = estimateMinutes(blocks, isRecovery)
-
-  return {
+  // Run the shared consistency pass (even alternating reps, honest time
+  // estimate) so deterministic and AI workouts obey the same invariants.
+  return normalizeWorkout({
     date,
     phase,
     title,
     summary,
-    estMinutes,
+    estMinutes: 0, // recomputed by normalizeWorkout
     rpeLow,
     rpeHigh,
     talkTest: def.talkTest,
     blocks,
     isRecovery,
-  }
-}
-
-function estimateMinutes(blocks: WorkoutBlock[], isRecovery: boolean): number {
-  let mins = 0
-  for (const b of blocks) {
-    if (b.block === 'warmup') mins += 6
-    else if (b.block === 'cooldown') mins += 6
-    else if (b.block === 'strength') mins += b.items.length * 4
-    else mins += 12 // metcon / walk
-  }
-  return isRecovery ? Math.max(mins, 15) : Math.max(mins, 20)
+  })
 }

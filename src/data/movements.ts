@@ -267,6 +267,7 @@ export const MOVEMENTS: Movement[] = [
   // ---- Lunge / step -------------------------------------------------------
   {
     id: 'step_up',
+    alternates: true,
     name: 'Step-up to bench',
     pattern: 'lunge',
     requires: ['bench'],
@@ -279,6 +280,7 @@ export const MOVEMENTS: Movement[] = [
   },
   {
     id: 'reverse_lunge',
+    alternates: true,
     name: 'Reverse lunge',
     pattern: 'lunge',
     requires: ['bodyweight'],
@@ -291,6 +293,7 @@ export const MOVEMENTS: Movement[] = [
   },
   {
     id: 'db_reverse_lunge',
+    alternates: true,
     name: 'Dumbbell reverse lunge',
     pattern: 'lunge',
     requires: ['dumbbells'],
@@ -381,6 +384,7 @@ export const MOVEMENTS: Movement[] = [
   // ---- Core ---------------------------------------------------------------
   {
     id: 'dead_bug',
+    alternates: true,
     name: 'Dead bug',
     pattern: 'core',
     requires: ['bodyweight'],
@@ -405,6 +409,7 @@ export const MOVEMENTS: Movement[] = [
   },
   {
     id: 'seated_knee_extension',
+    alternates: true,
     name: 'Seated knee extensions',
     pattern: 'squat',
     requires: ['bodyweight'],
@@ -417,6 +422,7 @@ export const MOVEMENTS: Movement[] = [
   },
   {
     id: 'side_leg_raises',
+    alternates: true,
     name: 'Standing side leg raises',
     pattern: 'core',
     requires: ['bodyweight'],
@@ -429,6 +435,7 @@ export const MOVEMENTS: Movement[] = [
   },
   {
     id: 'bird_dog',
+    alternates: true,
     name: 'Bird dog',
     pattern: 'core',
     requires: ['bodyweight'],
@@ -441,6 +448,7 @@ export const MOVEMENTS: Movement[] = [
   },
   {
     id: 'standing_marches_core',
+    alternates: true,
     name: 'Standing knee drives',
     pattern: 'core',
     requires: ['bodyweight'],
@@ -780,6 +788,7 @@ export const MOVEMENTS: Movement[] = [
   // ---- Plyo / step box ----------------------------------------------------
   {
     id: 'box_step_up',
+    alternates: true,
     name: 'Box step-up',
     pattern: 'lunge',
     requires: ['box'],

@@ -146,7 +146,8 @@ src/
   data/        movements.ts (exercise library), phases.ts (phase defs + weekly schedule),
                safety.ts (clinical content), equipment.ts (equipment catalog), glossary.ts (jargon definitions)
   engine/      phase.ts (phase determination), generator.ts (offline workout engine + shared eligibility),
-               llm.ts (calls /api/generate), validate.ts (re-validates AI output against the safety rails)
+               llm.ts (calls /api/generate), validate.ts (re-validates AI output against the safety rails),
+               normalize.ts (consistency guardrails: even reps for alternating moves, honest time estimate)
   state/       store.tsx (state + cloud sync, streaks, milestones), auth.tsx (Supabase auth context)
   lib/         date.ts (date math + seeded RNG), supabase.ts (client; null in local-only mode), care.ts (caregiver sharing)
   components/  Today, WorkoutView, ReadinessCheck, History, Progress, Equipment, Settings, SafetySheet,

@@ -2,6 +2,7 @@ import type { EquipmentItem, ISODate, PhaseId, Profile, RawAiWorkout, Workout, W
 import { MOVEMENTS_BY_ID } from '../data/movements'
 import { PHASES } from '../data/phases'
 import { getEligibleMovements, loadableLoads } from './generator'
+import { normalizeWorkout } from './normalize'
 
 export interface ValidationResult {
   workout: Workout | null
@@ -115,5 +116,7 @@ export function validateAiWorkout(
     blocks,
     isRecovery,
   }
-  return { workout, errors: [] }
+  // Final consistency pass: even alternating reps + recompute the time estimate
+  // from the actual prescription (the model's estMinutes is only a fallback).
+  return { workout: normalizeWorkout(workout), errors: [] }
 }

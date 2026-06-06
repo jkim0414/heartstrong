@@ -1,4 +1,5 @@
 import { validateAiWorkout } from '../src/engine/validate'
+import { alternatingRepsAreEven, estimateWorkoutMinutes } from '../src/engine/normalize'
 import type { EquipmentItem, Profile, RawAiWorkout } from '../src/types'
 
 const equipment: EquipmentItem[] = [
@@ -70,5 +71,24 @@ check('caps RPE high to phase ceiling (7)', res.workout?.rpeHigh === 7)
 check('clamps absurd load to owned max (30)', res.workout?.blocks.find((b) => b.block === 'strength')?.items[0].loadLb === 30)
 check('snaps load 25 -> owned pair', [20, 30].includes(res.workout?.blocks.find((b) => b.block === 'strength')?.items[1].loadLb ?? 0))
 check('enriches movement name from library', res.workout?.blocks[0].items[0].name === 'Standing leg swings')
+
+// 5. Consistency normalization: odd reps on an alternating movement + a bogus
+//    time estimate must be corrected.
+const messy: RawAiWorkout = {
+  title: 'Messy math', summary: 'x', estMinutes: 999, rpeLow: 4, rpeHigh: 6,
+  blocks: [
+    { block: 'warmup', title: 'wu', items: [{ movementId: 'diaphragmatic_breathing', dose: '5 breaths' }] },
+    { block: 'strength', title: 'str', items: [{ movementId: 'db_reverse_lunge', dose: '3 sets × 9', loadLb: 20 }] },
+    { block: 'metcon', title: 'm', format: '6 rounds: 2 min brisk walk / 1 min easy walk', items: [{ movementId: 'reverse_lunge', dose: '7 reps' }] },
+    { block: 'cooldown', title: 'cd', items: [{ movementId: 'quad_stretch', dose: '30s' }] },
+  ],
+}
+const mres = validateAiWorkout(messy, '2026-06-01', 3, p3, equipment)
+const strItem = mres.workout?.blocks.find((b) => b.block === 'strength')?.items[0]
+const metItem = mres.workout?.blocks.find((b) => b.block === 'metcon')?.items[0]
+check('evens alternating strength reps (9 -> 10)', strItem?.dose.includes('10') === true && alternatingRepsAreEven(strItem!))
+check('evens alternating metcon reps (7 -> 8)', metItem?.dose === '8 reps' && alternatingRepsAreEven(metItem!))
+check('recomputes bogus estMinutes from prescription', mres.workout != null && mres.workout.estMinutes !== 999 && mres.workout.estMinutes === estimateWorkoutMinutes(mres.workout.blocks, false))
+check('interval-format estimate is sane (~18+ min, <=90)', (mres.workout?.estMinutes ?? 0) >= 18 && (mres.workout?.estMinutes ?? 99) <= 90)
 
 console.log(`\n${fail === 0 ? `PASS — ${pass}/${pass} checks` : `FAIL — ${fail} failing`}`)

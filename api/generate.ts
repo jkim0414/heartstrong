@@ -48,6 +48,7 @@ ABSOLUTE SAFETY RULES (never violate):
 4. Suggested dumbbell loads must come from the loads he owns. Lighter loads for overhead/pressing.
 5. Keep total time roughly 20-35 minutes (recovery days shorter), and keep the session lean: warm-up at most 3 movements, the main work (strength and/or conditioning) just 2-3 distinct movements, cool-down at most 3 movements — about 8 distinct movements total, never more than 10.
 6. Do not write movement coaching cues — the app supplies vetted cues. You provide titles, the "format" line, a short block "note", the dose (e.g. "3 rounds x 10", "AMRAP 10 min", "30 sec hold"), and optional loadLb.
+7. Keep doses logically consistent: for movements that alternate sides (lunges, step-ups, dead bug, etc.) prescribe an EVEN total rep count so both sides get equal work, and make sure the format's round/time math is coherent.
 
 Always respond by calling the submit_workout tool.`
 

@@ -62,6 +62,12 @@ export interface Movement {
   cue: string
   /** Optional easier substitution suggestion. */
   scaleDown?: string
+  /**
+   * True when reps alternate sides within a set (e.g. alternating lunges,
+   * dead bug). A single total rep count must then be EVEN so both sides get
+   * equal work — enforced by the workout normalizer.
+   */
+  alternates?: boolean
   /** Tags that let the generator pick by role. */
   tags?: string[]
 }
