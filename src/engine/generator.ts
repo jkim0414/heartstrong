@@ -160,22 +160,20 @@ function walkMinutes(ctx: Ctx, kind: 'easy' | 'main'): number {
 // ---- Block builders -------------------------------------------------------
 
 function buildWarmup(ctx: Ctx): WorkoutBlock {
+  // Keep it to the essentials: one breathing reset, one mobility drill, one
+  // gentle pulse-raiser. A long warm-up adds friction without adding benefit.
   const used = new Set<string>()
   const items: PrescribedItem[] = []
-  const breathing = pickTag(ctx, 'warmup', used) // mostly mobility/breathing
-  if (breathing) items.push(toItem(ctx, breathing, '1 min, easy'))
   // Always include a breathing reset.
   const breath = ctx.eligible.find((m) => m.id === 'diaphragmatic_breathing')
-  if (breath && !used.has(breath.id)) {
+  if (breath) {
     used.add(breath.id)
     items.push(toItem(ctx, breath, '5 slow breaths'))
   }
-  // A couple more mobility / gentle locomotion bits.
-  for (let i = 0; i < 2; i++) {
-    const m = pickTag(ctx, 'warmup', used)
-    if (m) items.push(toItem(ctx, m, m.pattern === 'locomotion' ? '1–2 min' : '8–10 each side'))
-  }
-  // Gentle pulse-raiser.
+  // One mobility / gentle loosening drill.
+  const mobility = pickTag(ctx, 'warmup', used)
+  if (mobility) items.push(toItem(ctx, mobility, mobility.pattern === 'locomotion' ? '1–2 min' : '8–10 each side'))
+  // Gentle pulse-raiser to finish.
   const march = ctx.eligible.find((m) => m.id === 'marching_in_place' && !used.has(m.id))
   if (march) {
     used.add(march.id)
@@ -203,11 +201,9 @@ function buildCooldown(ctx: Ctx): WorkoutBlock {
   const items: PrescribedItem[] = []
   const walk = ctx.eligible.find((m) => m.id === 'walk') ?? ctx.eligible.find((m) => m.id === 'marching_in_place')
   if (walk) items.push(toItem(ctx, walk, '3–5 min, slowing down'))
-  // Stretches.
-  for (let i = 0; i < 2; i++) {
-    const m = pickTag(ctx, 'cooldown', used)
-    if (m) items.push(toItem(ctx, m, '30–45 sec each side'))
-  }
+  // One stretch, then a breathing reset — short and purposeful.
+  const stretch = pickTag(ctx, 'cooldown', used)
+  if (stretch) items.push(toItem(ctx, stretch, '30–45 sec each side'))
   const breath = ctx.eligible.find((m) => m.id === 'diaphragmatic_breathing')
   if (breath) items.push(toItem(ctx, breath, '6 slow breaths'))
   return {
@@ -262,7 +258,7 @@ function buildStrength(ctx: Ctx, count: number): WorkoutBlock | null {
   }
 }
 
-function buildMetcon(ctx: Ctx): WorkoutBlock | null {
+function buildMetcon(ctx: Ctx, maxItems?: number): WorkoutBlock | null {
   const used = new Set<string>()
   const items: PrescribedItem[] = []
 
@@ -278,7 +274,7 @@ function buildMetcon(ctx: Ctx): WorkoutBlock | null {
         m.pattern === 'carry') &&
       m.impact <= (ctx.phase >= 3 ? 2 : 1),
   )
-  const want = ctx.phase >= 3 ? 3 : 2
+  const want = maxItems ?? (ctx.phase >= 3 ? 3 : 2)
   const usedPatterns = new Set<Pattern>()
   for (let i = 0; i < want && candidates.length > 0; i++) {
     // Prefer movements whose pattern is fresh today AND wasn't emphasized
@@ -510,7 +506,7 @@ export function generateWorkout(
       title = 'Full-body strength'
       summary = 'The day’s focus is resistance training — controlled, full-body, building real strength.'
       add(buildWarmup(ctx))
-      add(buildStrength(ctx, ctx.phase >= 3 ? 4 : 3))
+      add(buildStrength(ctx, ctx.phase >= 4 ? 4 : 3))
       add(buildCooldown(ctx))
       break
 
@@ -519,7 +515,9 @@ export function generateWorkout(
       summary = 'A short strength block, then a conditioning piece — the heart of scaled CrossFit.'
       add(buildWarmup(ctx))
       add(buildStrength(ctx, ctx.phase >= 3 ? 3 : 2))
-      add(buildMetcon(ctx))
+      // Paired with strength, the conditioning piece stays to 2 movements so
+      // the combined day doesn't balloon into a long session.
+      add(buildMetcon(ctx, 2))
       add(buildCooldown(ctx))
       break
 
