@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { STOP_SIGNS, STOP_ACTION, RPE_SCALE, RPE_EXPLAINER, MED_REMINDERS, MEDICAL_DISCLAIMER } from '../data/safety'
+import type { Profile } from '../types'
 import { Button } from './ui'
 
 /** A full-screen, always-reachable safety reference. */
-export function SafetySheet({ onClose }: { onClose: () => void }) {
+export function SafetySheet({ onClose, profile }: { onClose: () => void; profile: Profile }) {
+  const hasHealthProfile = !!(profile.conditions || profile.medications || profile.careNotes)
   const [tab, setTab] = useState<'stop' | 'effort' | 'reminders'>('stop')
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/40 backdrop-blur-sm">
@@ -80,6 +82,28 @@ export function SafetySheet({ onClose }: { onClose: () => void }) {
 
           {tab === 'reminders' && (
             <div className="space-y-3">
+              {/* Personalized from the user's own health profile (Settings). */}
+              {hasHealthProfile ? (
+                <div className="rounded-2xl bg-brand-50 p-4 ring-1 ring-brand-200">
+                  <p className="text-base font-semibold text-brand-900">Your health profile</p>
+                  <div className="mt-3 space-y-3">
+                    {profile.conditions && <ProfileLine label="Conditions" text={profile.conditions} />}
+                    {profile.medications && <ProfileLine label="Medications" text={profile.medications} />}
+                    {profile.careNotes && <ProfileLine label="Care-team notes / things to avoid" text={profile.careNotes} />}
+                  </div>
+                  <p className="mt-3 text-xs text-brand-800/80">Edit anytime in Settings → Health profile.</p>
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-brand-50 p-4 ring-1 ring-brand-200">
+                  <p className="text-base font-semibold text-brand-900">Personalize these reminders</p>
+                  <p className="mt-1.5 text-sm text-brand-800">
+                    Add your conditions, medications, and any care-team notes in Settings → Health profile, and they’ll show
+                    up here as a quick reference.
+                  </p>
+                </div>
+              )}
+
+              <p className="px-1 pt-1 text-sm font-bold uppercase tracking-wide text-slate-500">General reminders</p>
               {MED_REMINDERS.map((r) => (
                 <div key={r.title} className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
                   <p className="text-base font-semibold text-slate-800">{r.title}</p>
@@ -92,6 +116,16 @@ export function SafetySheet({ onClose }: { onClose: () => void }) {
           <p className="px-1 pb-2 text-xs leading-relaxed text-slate-400">{MEDICAL_DISCLAIMER}</p>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** A labelled free-text line from the user's health profile. */
+function ProfileLine({ label, text }: { label: string; text: string }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">{label}</p>
+      <p className="mt-0.5 whitespace-pre-wrap text-base text-slate-700">{text}</p>
     </div>
   )
 }

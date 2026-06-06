@@ -90,7 +90,7 @@ export function App() {
         </div>
       </nav>
 
-      {safetyOpen && <SafetySheet onClose={() => setSafetyOpen(false)} />}
+      {safetyOpen && <SafetySheet onClose={() => setSafetyOpen(false)} profile={state.profile} />}
     </div>
   )
 }
