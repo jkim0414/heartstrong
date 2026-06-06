@@ -7,6 +7,7 @@ import { ReadinessCheck } from './ReadinessCheck'
 import { formatLong } from '../lib/date'
 import { fetchAiWorkout } from '../engine/llm'
 import { Glossarize } from './Glossarize'
+import { StreakCelebration } from './StreakCelebration'
 
 export function Today() {
   const { today, workoutFor, phaseResult, state, stats, setDayStatus, clearDay, setOverride, updateProfile, setAiWorkout, clearAiWorkout, recentTitles, recentPatternsFor } = useStore()
@@ -30,6 +31,7 @@ export function Today() {
   const [completing, setCompleting] = useState(false)
   const [revealed, setRevealed] = useState(false)
   const [confirmSternal, setConfirmSternal] = useState(false)
+  const [celebrateStreak, setCelebrateStreak] = useState<number | null>(null)
 
   useEffect(() => {
     if (!aiEligible || aiFresh) return
@@ -221,10 +223,16 @@ export function Today() {
               onSave={(notes, feltRpe) => {
                 setDayStatus(today, 'completed', { notes, feltRpe, workoutTitle: workout.title })
                 setCompleting(false)
+                // Today isn't counted until it's logged, so completing it adds one.
+                setCelebrateStreak(stats.currentStreak + 1)
               }}
             />
           )}
         </div>
+      )}
+
+      {celebrateStreak != null && (
+        <StreakCelebration streak={celebrateStreak} onClose={() => setCelebrateStreak(null)} />
       )}
     </div>
   )

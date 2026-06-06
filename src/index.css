@@ -48,6 +48,44 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+/* Streak-celebration animations. */
+@keyframes pop-in {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes flame-pulse {
+  0%,
+  100% {
+    transform: scale(1) rotate(-3deg);
+  }
+  50% {
+    transform: scale(1.14) rotate(3deg);
+  }
+}
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-24px) rotate(0deg);
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(105vh) rotate(560deg);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
