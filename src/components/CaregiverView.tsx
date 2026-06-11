@@ -202,9 +202,20 @@ function TodayTab({ state, today, phaseName, phaseTone }: { state: AppState; tod
   const { workout, isAi } = workoutForDay(state, today)
   const entry = state.log[today]
   const readiness = state.readiness[today]
+  // Their plan is AI-generated weekly; if today's isn't synced yet (e.g. they
+  // haven't opened the app since the new week began), what we show below is
+  // the built-in fallback — flag that rather than presenting a guess as fact.
+  const provisional = state.profile.aiEnabled && !isAi && !workout.isRecovery
   return (
     <div className="space-y-4">
-      <p className="text-sm text-slate-500">This is exactly what their app shows for today.</p>
+      {provisional ? (
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+          Showing the built-in fallback plan — their actual session is AI-planned and will appear here once their app
+          generates it (usually when they next open it).
+        </p>
+      ) : (
+        <p className="text-sm text-slate-500">This is exactly what their app shows for today.</p>
+      )}
 
       <Card>
         <div className="rounded-t-2xl bg-gradient-to-br from-brand-700 to-brand-800 p-4 text-white">

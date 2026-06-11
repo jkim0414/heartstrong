@@ -212,6 +212,8 @@ interface Store {
   clearDay: (date: ISODate) => void
   setOverride: (date: ISODate, ov: 'easier' | 'rest' | null) => void
   setAiWorkout: (date: ISODate, workout: Workout) => void
+  /** Cache several days at once (weekly plan) — one state update, one sync. */
+  setAiWorkouts: (workouts: Record<ISODate, Workout>) => void
   clearAiWorkout: (date: ISODate) => void
   recentTitles: () => string[]
   setReadiness: (date: ISODate, ok: boolean, flagged: string[]) => void
@@ -351,6 +353,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return { ...s, overrides }
         }),
       setAiWorkout: (date, workout) => setState((s) => ({ ...s, aiCache: { ...s.aiCache, [date]: workout } })),
+      setAiWorkouts: (workouts) => setState((s) => ({ ...s, aiCache: { ...s.aiCache, ...workouts } })),
       clearAiWorkout: (date) =>
         setState((s) => {
           const aiCache = { ...s.aiCache }

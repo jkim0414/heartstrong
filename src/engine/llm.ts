@@ -1,7 +1,7 @@
 import type { EquipmentItem, ISODate, Pattern, PhaseId, Profile, RawAiWorkout, Workout } from '../types'
 import { PHASES, WEEKLY_SCHEDULE } from '../data/phases'
 import { getEligibleMovements, loadableLoads } from './generator'
-import { validateAiWorkout } from './validate'
+import { validateAiWeek, validateAiWorkout } from './validate'
 import { weekday } from '../lib/date'
 import { getAccessToken } from '../state/auth'
 
@@ -104,6 +104,49 @@ export async function fetchAiWorkout(
     const raw = (await res.json()) as RawAiWorkout
     const { workout } = validateAiWorkout(raw, date, phase, profile, equipment)
     return workout
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Ask the AI endpoint to program a whole block of training days as one
+ * coherent week. Returns a map of date -> validated Workout; days the model
+ * botched are simply absent (deterministic engine covers them). Returns null
+ * on any transport failure so the caller can fall back entirely.
+ */
+export async function fetchAiWeek(
+  dates: ISODate[],
+  phase: PhaseId,
+  profile: Profile,
+  equipment: EquipmentItem[],
+  recentTitles: string[],
+  recentPatterns: Pattern[] = [],
+  adherence?: string,
+): Promise<Record<ISODate, Workout> | null> {
+  if (dates.length === 0) return {}
+  try {
+    const body = {
+      ...buildRequest(dates[0], phase, profile, equipment, recentTitles, recentPatterns, 0),
+      weekDays: dates.map((d) => ({
+        date: d,
+        weekdayName: WD[weekday(d)],
+        suggestedFocus: WEEKLY_SCHEDULE[phase][weekday(d)],
+      })),
+      adherence,
+    }
+    const token = await getAccessToken()
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const raw = (await res.json()) as { days?: (RawAiWorkout & { date?: string })[] }
+    return validateAiWeek(raw, dates, phase, profile, equipment)
   } catch {
     return null
   }

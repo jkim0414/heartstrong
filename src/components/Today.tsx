@@ -4,13 +4,15 @@ import { PHASES } from '../data/phases'
 import { Button, Card, Pill } from './ui'
 import { WorkoutView } from './WorkoutView'
 import { ReadinessCheck } from './ReadinessCheck'
-import { formatLong } from '../lib/date'
-import { fetchAiWorkout } from '../engine/llm'
+import { addDays, formatLong, weekday } from '../lib/date'
+import { determinePhase } from '../engine/phase'
+import { fetchAiWeek, fetchAiWorkout } from '../engine/llm'
 import { Glossarize } from './Glossarize'
 import { StreakCelebration } from './StreakCelebration'
+import type { ISODate } from '../types'
 
 export function Today() {
-  const { today, workoutFor, phaseResult, state, stats, setDayStatus, clearDay, setOverride, updateProfile, setAiWorkout, clearAiWorkout, recentTitles, recentPatternsFor } = useStore()
+  const { today, workoutFor, phaseResult, state, stats, setDayStatus, clearDay, setOverride, updateProfile, setAiWorkout, setAiWorkouts, clearAiWorkout, recentTitles, recentPatternsFor } = useStore()
   const deterministic = workoutFor(today)
   const entry = state.log[today]
   const readiness = state.readiness[today]
@@ -33,16 +35,64 @@ export function Today() {
   const [confirmSternal, setConfirmSternal] = useState(false)
   const [celebrateStreak, setCelebrateStreak] = useState<number | null>(null)
 
+  // Which upcoming days still need an AI plan? Programming is set as a weekly
+  // block (today through Saturday; when the week is nearly over, next week
+  // too), not improvised per day. Skipped: rest/recovery days (deterministic
+  // by design), days already planned for the current phase, overridden days,
+  // and days whose phase differs from today's — those regenerate when reached,
+  // against the right phase's movement list.
+  const neededAiDates = (): ISODate[] => {
+    if (!state.profile.aiEnabled) return []
+    const weekEnd = addDays(today, 6 - weekday(today))
+    const horizon = weekday(today) >= 5 ? addDays(weekEnd, 7) : weekEnd
+    const out: ISODate[] = []
+    for (let d = today; d <= horizon; d = addDays(d, 1)) {
+      if (determinePhase(state.profile, d).phase !== phaseResult.phase) continue
+      if (state.aiCache[d]?.phase === phaseResult.phase) continue
+      if (state.overrides[d]) continue
+      if (workoutFor(d).isRecovery) continue
+      out.push(d)
+    }
+    return out
+  }
+
+  // Short adherence note so the weekly planner can ease back in after misses.
+  const adherenceSummary = (): string => {
+    let done = 0
+    let rest = 0
+    let missed = 0
+    for (let i = 1; i <= 7; i++) {
+      const d = addDays(today, -i)
+      const e = state.log[d]
+      if (e?.status === 'completed') done++
+      else if (e?.status === 'rest') rest++
+      else if (!workoutFor(d).isRecovery) missed++
+    }
+    return `over the last 7 days he completed ${done}, logged ${rest} rest, missed ${missed}.`
+  }
+
   useEffect(() => {
-    if (!aiEligible || aiFresh) return
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return
     let cancelled = false
-    setAiLoading(true)
-    fetchAiWorkout(today, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(today), salt).then((w) => {
-      if (cancelled) return
-      if (w) setAiWorkout(today, w)
-      setAiLoading(false)
-    })
+    if (salt > 0) {
+      // "New variation" re-rolls just today within the weekly plan.
+      if (!aiEligible || aiFresh) return
+      setAiLoading(true)
+      fetchAiWorkout(today, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(today), salt).then((w) => {
+        if (cancelled) return
+        if (w) setAiWorkout(today, w)
+        setAiLoading(false)
+      })
+    } else {
+      const needed = neededAiDates()
+      if (needed.length === 0) return
+      if (needed[0] === today) setAiLoading(true)
+      fetchAiWeek(needed, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(needed[0]), adherenceSummary()).then((w) => {
+        if (cancelled) return
+        if (w) setAiWorkouts(w)
+        setAiLoading(false)
+      })
+    }
     return () => {
       cancelled = true
     }

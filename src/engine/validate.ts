@@ -120,3 +120,27 @@ export function validateAiWorkout(
   // from the actual prescription (the model's estMinutes is only a fallback).
   return { workout: normalizeWorkout(workout), errors: [] }
 }
+
+/**
+ * Validate a whole AI-planned week. Each day is held to the exact same rails
+ * as a single-day workout; a day that fails validation is simply dropped (the
+ * deterministic engine covers it), so one bad day never sinks the whole plan.
+ * Only requested dates are accepted — extra or duplicate dates are ignored.
+ */
+export function validateAiWeek(
+  raw: { days?: (RawAiWorkout & { date?: string })[] } | null | undefined,
+  requestedDates: ISODate[],
+  phase: PhaseId,
+  profile: Profile,
+  equipment: EquipmentItem[],
+): Record<ISODate, Workout> {
+  const out: Record<ISODate, Workout> = {}
+  const wanted = new Set(requestedDates)
+  for (const day of raw?.days ?? []) {
+    const date = day?.date
+    if (!date || !wanted.has(date) || out[date]) continue
+    const { workout } = validateAiWorkout(day, date, phase, profile, equipment)
+    if (workout) out[date] = workout
+  }
+  return out
+}

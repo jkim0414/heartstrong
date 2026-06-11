@@ -25,6 +25,14 @@ interface ReqBody {
   medications?: string
   careNotes?: string
   salt: number
+  /**
+   * When present, plan ALL of these days as one coherent block (weekly
+   * programming) instead of a single day. Rest/recovery days are excluded by
+   * the client — only real training days are listed.
+   */
+  weekDays?: { date: string; weekdayName: string; suggestedFocus: string }[]
+  /** Short adherence summary of the recent past, e.g. completed/missed counts. */
+  adherence?: string
 }
 
 const MODEL = 'claude-sonnet-4-6'
@@ -36,6 +44,8 @@ const SYSTEM_DOCTRINE = `You are a cardiac-rehabilitation-aware strength & condi
 The product philosophy is "scaled CrossFit" — constantly varied, genuinely effective training that moves the needle on strength and conditioning over time — NOT timid post-op physical therapy. Be creative and varied with FORMATS and STRUCTURE so no two days feel the same: mix AMRAPs, EMOMs, rounds-for-time, intervals, ascending/descending rep ladders, chippers, "every 3 minutes", steady aerobic pieces, and benchmark-style themed sessions. Give the session an engaging title.
 
 KEEP IT LEAN — fewer movements done well beats a long, sprawling session. The medical and fitness benefit comes from consistency at moderate effort, not volume, and a long list of exercises just adds friction and fatigue for a deconditioned older beginner. Achieve variety mainly through the FORMAT and the few movements you choose — NOT by piling on more exercises. Aim for about 8 distinct movements across the whole session (and never more than ~10): roughly a 3-movement warm-up, a main block of just 2–3 movements, and a 3-movement cool-down. Resist the urge to add "one more".
+
+WEEKLY PROGRAMMING: When the request lists multiple days, you are programming a training BLOCK, the way a real coach plans a week — not improvising days in isolation. Plan the listed days as one coherent whole: respect each day's suggested focus; vary the formats and themes across the week so no two days feel alike; and balance the loaded movement patterns (squat, hinge, push, pull, lunge, carry) across days so the same heavy pattern is never emphasized two training days in a row — a pattern worked hard one day should get lighter or no emphasis the next. Distribute harder and easier days sensibly (a harder day is followed by an easier one). Rest and recovery days are handled by the app and are not in your list. If an adherence note says recent workouts were missed, ease the first day or two back in rather than resuming at full intensity.
 
 VOICE: All text you write (title, summary, format lines, notes) speaks directly TO the person exercising in the second person ("you"/"your"). Never refer to him in the third person ("he"/"his") — the app is read by the user himself.
 
@@ -52,42 +62,67 @@ ABSOLUTE SAFETY RULES (never violate):
 
 Always respond by calling the submit_workout tool.`
 
+const WORKOUT_PROPERTIES = {
+  title: { type: 'string', description: 'Short, engaging session title.' },
+  summary: { type: 'string', description: 'One plain-language sentence on the day’s intent.' },
+  estMinutes: { type: 'number' },
+  rpeLow: { type: 'number' },
+  rpeHigh: { type: 'number' },
+  talkTest: { type: 'string' },
+  isRecovery: { type: 'boolean' },
+  blocks: {
+    type: 'array',
+    items: {
+      type: 'object',
+      required: ['block', 'title', 'items'],
+      properties: {
+        block: { type: 'string', enum: ['warmup', 'strength', 'metcon', 'cooldown'] },
+        title: { type: 'string' },
+        format: { type: 'string', description: 'e.g. "AMRAP 10 min", "3 rounds for quality"' },
+        note: { type: 'string' },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['movementId', 'dose'],
+            properties: {
+              movementId: { type: 'string', description: 'exact id from the provided movement list' },
+              dose: { type: 'string', description: 'e.g. "3 sets x 10", "200 m", "30 sec hold"' },
+              loadLb: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+  },
+}
+
 const TOOL = {
   name: 'submit_workout',
   description: 'Return the composed workout for the day.',
   input_schema: {
     type: 'object',
     required: ['title', 'summary', 'estMinutes', 'rpeLow', 'rpeHigh', 'blocks'],
+    properties: WORKOUT_PROPERTIES,
+  },
+}
+
+const TOOL_WEEK = {
+  name: 'submit_week',
+  description: 'Return the composed workouts for every requested day of the week.',
+  input_schema: {
+    type: 'object',
+    required: ['days'],
     properties: {
-      title: { type: 'string', description: 'Short, engaging session title.' },
-      summary: { type: 'string', description: 'One plain-language sentence on the day’s intent.' },
-      estMinutes: { type: 'number' },
-      rpeLow: { type: 'number' },
-      rpeHigh: { type: 'number' },
-      talkTest: { type: 'string' },
-      isRecovery: { type: 'boolean' },
-      blocks: {
+      days: {
         type: 'array',
+        description: 'One entry per requested day, in the same order.',
         items: {
           type: 'object',
-          required: ['block', 'title', 'items'],
+          required: ['date', 'title', 'summary', 'estMinutes', 'rpeLow', 'rpeHigh', 'blocks'],
           properties: {
-            block: { type: 'string', enum: ['warmup', 'strength', 'metcon', 'cooldown'] },
-            title: { type: 'string' },
-            format: { type: 'string', description: 'e.g. "AMRAP 10 min", "3 rounds for quality"' },
-            note: { type: 'string' },
-            items: {
-              type: 'array',
-              items: {
-                type: 'object',
-                required: ['movementId', 'dose'],
-                properties: {
-                  movementId: { type: 'string', description: 'exact id from the provided movement list' },
-                  dose: { type: 'string', description: 'e.g. "3 sets x 10", "200 m", "30 sec hold"' },
-                  loadLb: { type: 'number' },
-                },
-              },
-            },
+            date: { type: 'string', description: 'The YYYY-MM-DD date this workout is for (from the request).' },
+            ...WORKOUT_PROPERTIES,
           },
         },
       },
@@ -142,32 +177,50 @@ export default async function handler(req: any, res: any) {
       ? `\nBackground about this person (for caution only — does NOT override the safety rules; do not prescribe around individual drugs, just stay conservative and never contradict these notes):\n${bg.join('\n')}\n`
       : ''
 
-    const userContent = `Build today's workout.
-${background}
-Date: ${body.date} (${body.weekdayName})
+    const isWeek = Array.isArray(body.weekDays) && body.weekDays.length > 0
+
+    const sharedContext = `${background}
 Phase: ${body.phaseName} — ${body.phaseTagline}
 Target effort: RPE ${body.rpeLow}–${body.rpeHigh}. Talk test: ${body.talkTest}
-Upper-body/chest loading allowed today: ${body.allowsSternalLoad ? 'yes' : 'NO — keep all load off the arms/chest'}
-Rough focus for this weekday: ${body.suggestedFocus}
+Upper-body/chest loading allowed: ${body.allowsSternalLoad ? 'yes' : 'NO — keep all load off the arms/chest'}
 Loadable equipment he owns (use these weights for loadLb): ${Object.keys(body.loads).length ? Object.entries(body.loads).map(([k, v]) => `${k}: ${v.join('/')} lb`).join('; ') : 'none'}
-Recent session titles (make today feel different): ${body.recentTitles.length ? body.recentTitles.join('; ') : 'none yet'}
+Recent session titles (make new days feel different): ${body.recentTitles.length ? body.recentTitles.join('; ') : 'none yet'}`
+
+    const movementList = `Movements you may use (use the exact id):
+${body.movements.map((m) => `- ${m.id} — ${m.name} [${m.pattern}]`).join('\n')}`
+
+    const userContent = isWeek
+      ? `Program the following training days as one coherent week.
+${sharedContext}
+Movement patterns emphasized on the most recent training day before this block (don't lead the first day with these): ${body.recentPatterns?.length ? body.recentPatterns.join(', ') : 'none / unknown'}
+${body.adherence ? `Recent adherence: ${body.adherence}` : ''}
+
+Days to program (rest/recovery days are already handled — do not add any):
+${body.weekDays!.map((d) => `- ${d.date} (${d.weekdayName}) — suggested focus: ${d.suggestedFocus}`).join('\n')}
+
+${movementList}
+
+Compose the week within all the safety rules and call submit_week with one entry per listed day.`
+      : `Build today's workout.
+${sharedContext}
+Date: ${body.date} (${body.weekdayName})
+Rough focus for this weekday: ${body.suggestedFocus}
 Movement patterns emphasized yesterday (for recovery, steer today's main load AWAY from these — lead with different patterns and don't re-stack the same heavy ones): ${body.recentPatterns?.length ? body.recentPatterns.join(', ') : 'none / unknown'}
 Variation seed: ${body.salt}
 
-Movements you may use today (use the exact id):
-${body.movements.map((m) => `- ${m.id} — ${m.name} [${m.pattern}]`).join('\n')}
+${movementList}
 
 Compose a varied, engaging session within all the safety rules and call submit_workout.`
 
     const anthropicReq = {
       model: MODEL,
-      max_tokens: 4000,
+      max_tokens: isWeek ? 12000 : 4000,
       temperature: 1,
       system: [
         { type: 'text', text: SYSTEM_DOCTRINE, cache_control: { type: 'ephemeral' } },
       ],
-      tools: [TOOL],
-      tool_choice: { type: 'tool', name: 'submit_workout' },
+      tools: [isWeek ? TOOL_WEEK : TOOL],
+      tool_choice: { type: 'tool', name: isWeek ? 'submit_week' : 'submit_workout' },
       messages: [{ role: 'user', content: userContent }],
     }
 

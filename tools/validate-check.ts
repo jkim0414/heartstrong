@@ -1,4 +1,4 @@
-import { validateAiWorkout } from '../src/engine/validate'
+import { validateAiWeek, validateAiWorkout } from '../src/engine/validate'
 import { alternatingRepsAreEven, estimateWorkoutMinutes } from '../src/engine/normalize'
 import type { EquipmentItem, Profile, RawAiWorkout } from '../src/types'
 
@@ -90,5 +90,24 @@ check('evens alternating strength reps (9 -> 10)', strItem?.dose.includes('10') 
 check('evens alternating metcon reps (7 -> 8)', metItem?.dose === '8 reps' && alternatingRepsAreEven(metItem!))
 check('recomputes bogus estMinutes from prescription', mres.workout != null && mres.workout.estMinutes !== 999 && mres.workout.estMinutes === estimateWorkoutMinutes(mres.workout.blocks, false))
 check('interval-format estimate is sane (~18+ min, <=90)', (mres.workout?.estMinutes ?? 0) >= 18 && (mres.workout?.estMinutes ?? 99) <= 90)
+
+// 6. Weekly plan: a good day is kept, an unsafe day is dropped (not fatal to
+//    the rest of the week), and an unrequested date is ignored.
+const okDay = {
+  date: '2026-06-15',
+  title: 'Good day', summary: 'x', estMinutes: 30, rpeLow: 4, rpeHigh: 6,
+  blocks: [
+    { block: 'warmup' as const, title: 'wu', items: [{ movementId: 'marching_in_place', dose: '2 min' }] },
+    { block: 'metcon' as const, title: 'm', format: 'AMRAP 10 min', items: [{ movementId: 'air_squat', dose: '10 reps' }] },
+    { block: 'cooldown' as const, title: 'cd', items: [{ movementId: 'quad_stretch', dose: '30s' }] },
+  ],
+}
+const badDay = { ...okDay, date: '2026-06-16', title: 'Sneaky press', blocks: [okDay.blocks[0], { block: 'strength' as const, title: 's', items: [{ movementId: 'bb_bench_press', dose: '3x5' }] }, okDay.blocks[2]] }
+const extraDay = { ...okDay, date: '2026-06-19', title: 'Not requested' }
+const week = validateAiWeek({ days: [okDay, badDay, extraDay] }, ['2026-06-15', '2026-06-16', '2026-06-17'], 3, p3, equipment)
+check('week: valid day kept', !!week['2026-06-15'])
+check('week: unsafe day dropped without sinking the plan', !week['2026-06-16'] && !!week['2026-06-15'])
+check('week: unrequested date ignored', !week['2026-06-19'])
+check('week: missing day simply absent', !week['2026-06-17'])
 
 console.log(`\n${fail === 0 ? `PASS — ${pass}/${pass} checks` : `FAIL — ${fail} failing`}`)

@@ -30,7 +30,9 @@ A daily **readiness check** (chest symptoms, breathlessness, dizziness, palpitat
 
 ## AI-generated workouts (optional, on by default)
 
-For the CrossFit "constantly varied, never the same" feel, the app can generate each day's session with Claude — varied formats (AMRAP/EMOM/ladders/chippers/intervals), themes, and movement combinations — instead of the built-in engine.
+For the CrossFit "constantly varied, never the same" feel, the app generates training with Claude — varied formats (AMRAP/EMOM/ladders/chippers/intervals), themes, and movement combinations — instead of the built-in engine.
+
+**Programming is planned weekly, not improvised daily.** Like a real coach, the model programs the week's training days as one coherent block: formats vary across the week, loaded movement patterns are balanced so the same heavy pattern isn't emphasized two training days in a row, harder days are followed by easier ones, and a recent-adherence note lets it ease back in after missed days. The plan is cached per day and synced, so what a caregiver sees in the morning is the patient's actual session. Remaining days re-plan automatically if the recovery phase changes mid-week, and "New variation" re-rolls just one day. Rest and active-recovery days always come from the built-in engine.
 
 It's wired to be **safe and key-safe**:
 
@@ -43,7 +45,7 @@ It's wired to be **safe and key-safe**:
 
 > **Do not paste your API key into chat or commit it.** Set it as an environment variable in the host dashboard only. A static-only deploy (no key/function) still works — it just uses the built-in engine.
 >
-> **Cost:** one short generation per day (~a few thousand tokens, with prompt caching on the static safety prompt). Pennies per month for one user. Tapping "New variation" makes one more call.
+> **Cost:** one weekly-plan generation per week (~10k tokens, with prompt caching on the static safety prompt) plus a small call per "New variation" tap. Pennies per month for one user.
 
 If you'd rather keep it fully offline/free, flip **Settings → AI-generated workouts** off and the built-in engine takes over entirely.
 
@@ -96,7 +98,7 @@ Phase is determined automatically from surgery date + clearance flags (override 
 
 Each day generates **warmup + workout (strength and/or conditioning) + cooldown**, drawn only from the user's available equipment, deterministic per day (stable once viewed) but varied across days.
 
-**Recovery-aware rotation (Phase 3+).** From the Build phase on — once there's real load to manage — the engine looks at the loaded movement patterns (squat, hinge, push, pull, lunge, carry) it emphasized the day before and steers today *away* from them: it re-orders strength priority so freshly-rested patterns lead, and biases conditioning selection toward different patterns before relaxing. The same "patterns emphasized yesterday" hint is passed to the AI so it does the same. It degrades gracefully (if the only sensible movements overlap, it still uses them) and skips entirely after a logged rest day. In early phases, where building familiarity with a small set of movements matters more than novelty, this is off.
+**Recovery-aware rotation (Phase 3+).** From the Build phase on — once there's real load to manage — consecutive training days steer away from re-stacking the same loaded movement patterns (squat, hinge, push, pull, lunge, carry). In AI mode this falls out of weekly planning: the model balances patterns across the whole block, and is told which patterns the previous block emphasized. The built-in engine does it day-by-day: it re-orders strength priority so freshly-rested patterns lead and biases conditioning selection toward different patterns before relaxing. Both degrade gracefully (if the only sensible movements overlap, they're still used), and in early phases — where building familiarity with a small set of movements matters more than novelty — this is off.
 
 ## Features
 
