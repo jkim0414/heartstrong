@@ -79,13 +79,13 @@ At sign-in you pick how you'll use HeartStrong:
 
 **Caregiver view (read-only).** A patient creates a share code (Settings → *Share my progress*); a caregiver redeems it (*Follow someone*) and gets a read-only window into how they're doing — enforced by database row-level security, so a caregiver only ever sees people who explicitly shared with them, and can never change anything:
 
-- **Today** — the exact plan their app shows, and whether they logged it (with their effort rating + note).
+- **Today** — the exact plan their app shows, and whether they logged it (with their effort rating + note). Plans are AI-generated a week at a time and synced, so the morning view matches what they'll actually do; in the rare window before their app has generated the week, the fallback plan is labeled as provisional rather than presented as fact.
 - **Progress** — streak, weekly goal, an 8-week consistency trend, a calendar, their notes, and a **flagged-symptom alert** surfacing any days they reported chest pain, palpitations, etc. on the readiness check.
 - **Setup** — their phase, AI on/off, clearance status, equipment, and health profile.
 
 ## Health profile
 
-An optional, free-text place (Settings) to record **conditions, current medications, and notes/restrictions from the care team**. It's shown as reminders, surfaced to a caregiver, and given to the AI as *caution context* — the app never interprets it to make clinical decisions, and the safety limits are identical regardless of what's entered.
+An optional, free-text place (Settings) to record **conditions, current medications, and notes/restrictions from the care team**. It's surfaced at the top of the Safety sheet's Reminders tab (so your own regimen is one tap away), shown to a caregiver, and given to the AI as *caution context* — the app never interprets it to make clinical decisions, and the safety limits are identical regardless of what's entered.
 
 ## The phase engine
 
@@ -102,13 +102,13 @@ Each day generates **warmup + workout (strength and/or conditioning) + cooldown*
 
 ## Features
 
-- **Daily workout** — warm-up + workout (strength and/or conditioning) + cool-down, with plain-language coaching cues, scaling options, and suggested loads, built only from your equipment
+- **Daily workout** — warm-up + workout (strength and/or conditioning) + cool-down, with plain-language coaching cues, scaling options, and suggested loads, built only from your equipment; sessions kept deliberately lean (~20–35 min)
 - **Two modes** — patient (your own recovery) or caregiver (follow a loved one)
-- **AI or built-in** — constantly-varied AI sessions (Claude) with a deterministic offline fallback; both safety-checked identically
+- **AI or built-in** — constantly-varied training programmed by Claude in weekly blocks, with a deterministic offline fallback; both safety-checked identically, plus consistency guardrails (honest time estimates, even rep counts for side-alternating movements)
 - **Tap-to-define glossary** — fitness jargon (AMRAP, EMOM, RPE, hinge…) is tappable/hoverable for a plain-English definition
-- **Daily readiness check** + an always-visible **warning signs / one-tap Call 911**
+- **Daily readiness check** + an always-visible **warning signs / one-tap Call 911**, with the Safety sheet personalized from your health profile
 - **Editable equipment** (catalog + custom items) and an optional **health profile** (conditions / meds / care-team notes)
-- **Streaks** (kind by design — logged rest days *freeze* the streak rather than break it), weekly goal, milestones
+- **Streaks** (kind by design — logged rest days *freeze* the streak rather than break it), weekly goal, milestones, and a small celebration when completing a workout extends the streak
 - **Calendar history**; check off each day, rate effort, add notes
 - **Accounts + cloud sync** (optional, Supabase) so it follows you across devices — or run fully local & offline with no account
 - Installable to a phone home screen (**PWA**), large-text accessible UI
@@ -141,7 +141,8 @@ Without the optional accounts backend (below), all data lives in the browser's l
 
 ```
 api/
-  generate.ts  serverless function: holds the API key, verifies the session, calls Claude (structured output + caching)
+  generate.ts  serverless function: holds the API key, verifies the session, calls Claude
+               (structured output + prompt caching; weekly-block and single-day modes)
 supabase/
   schema.sql   table + Row-Level Security policies for per-user cloud data
 src/
@@ -155,8 +156,9 @@ src/
   components/  Today, WorkoutView, ReadinessCheck, History, Progress, Equipment, Settings, SafetySheet,
                Onboarding, SignIn, CaregiverApp, CaregiverView, CareSection, Glossarize, ui
 tools/
-  gen-check.ts       engine smoke test — verifies safety guardrails across all phases/weekdays
-  validate-check.ts  validator test — proves unsafe AI output (sternal-load, unknown moves, over-cap RPE) is rejected
+  gen-check.ts       engine smoke test — verifies safety + consistency guardrails across all phases/weekdays
+  validate-check.ts  validator test — proves unsafe AI output (sternal-load, unknown moves, over-cap RPE) is
+                     rejected, sloppy math is normalized, and one bad day can't sink a weekly plan
 ```
 
 To re-run the safety tests (bundle with esbuild + run with node):
