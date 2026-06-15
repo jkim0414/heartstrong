@@ -19,15 +19,25 @@ export function normalizeWorkout(workout: Workout): Workout {
   const blocks = workout.blocks.map((b) => ({
     ...b,
     items: b.items.map((it) => {
+      // In a rounds/AMRAP circuit the round count belongs at the block level —
+      // strip a redundant "5 rounds × …" prefix so each line shows only the
+      // per-round work (the renderer states the rotation once, clearly).
+      const stripRounds = b.block === 'metcon' && /\d+\s*rounds?|amrap|for time/i.test(b.format ?? '')
+      let dose = stripRounds ? dropRoundsPrefix(it.dose) : it.dose
       const m = MOVEMENTS_BY_ID[it.movementId]
-      if (m?.alternates) return { ...it, dose: evenizeReps(it.dose) }
-      return it
+      if (m?.alternates) dose = evenizeReps(dose)
+      return dose === it.dose ? it : { ...it, dose }
     }),
   }))
   return { ...workout, blocks, estMinutes: estimateWorkoutMinutes(blocks, workout.isRecovery) }
 }
 
 const nextEven = (n: number) => (n % 2 === 0 ? n : n + 1)
+
+/** Drop a leading "5 rounds x" / "5 rounds:" style prefix from a dose. */
+export function dropRoundsPrefix(dose: string): string {
+  return dose.replace(/^\s*\d+\s*rounds?\s*[x×:·-]?\s*/i, '').trim() || dose
+}
 
 /**
  * Round any bare total-rep count in a dose UP to the nearest even number.

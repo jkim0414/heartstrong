@@ -8,8 +8,26 @@ const BLOCK_META: Record<string, { label: string; emoji: string; ring: string }>
   cooldown: { label: 'Cool-down', emoji: '🧘', ring: 'ring-violet-200' },
 }
 
+/**
+ * For a multi-movement conditioning block, spell out the rotation structure —
+ * one round means doing ALL the movements in order, then repeating — since
+ * "5 rounds × 8 reps" on each line is otherwise ambiguous (all of one move
+ * first, or rotate?). Skips single-movement blocks and EMOMs (per-minute).
+ */
+function circuitHint(block: WorkoutBlock): string | null {
+  if (block.block !== 'metcon' || block.items.length < 2) return null
+  const f = (block.format ?? '').toLowerCase()
+  if (f.includes('emom') || /every\s+\d+\s*min/.test(f)) return null
+  const n = block.items.length
+  if (f.includes('amrap')) return `Do all ${n} movements in order, then start over — as many rounds as you can.`
+  const rounds = f.match(/(\d+)\s*rounds?/)
+  if (rounds) return `Do all ${n} movements in order — that’s 1 round. Then repeat, ${rounds[1]} rounds total.`
+  return `Do all ${n} movements in order — that’s 1 round, then repeat.`
+}
+
 function BlockCard({ block }: { block: WorkoutBlock }) {
   const meta = BLOCK_META[block.block]
+  const hint = circuitHint(block)
   return (
     <div className={`rounded-2xl bg-white p-5 shadow-sm ring-1 ${meta.ring}`}>
       <div className="flex items-center gap-2">
@@ -23,6 +41,12 @@ function BlockCard({ block }: { block: WorkoutBlock }) {
       {block.format && (
         <p className="mt-1 rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700">
           <Glossarize text={block.format} />
+        </p>
+      )}
+      {hint && (
+        <p className="mt-2 flex items-start gap-1.5 text-sm font-medium text-brand-800">
+          <span aria-hidden>🔁</span>
+          <span>{hint}</span>
         </p>
       )}
       <ul className="mt-3 divide-y divide-slate-100">

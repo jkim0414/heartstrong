@@ -110,4 +110,22 @@ check('week: unsafe day dropped without sinking the plan', !week['2026-06-16'] &
 check('week: unrequested date ignored', !week['2026-06-19'])
 check('week: missing day simply absent', !week['2026-06-17'])
 
+// 7. Circuit dose cleanup: redundant per-item round count is stripped when the
+//    block format already carries the rounds, leaving the per-round dose.
+const circuit: RawAiWorkout = {
+  title: 'Circuit', summary: 'x', estMinutes: 25, rpeLow: 3, rpeHigh: 5,
+  blocks: [
+    { block: 'warmup', title: 'wu', items: [{ movementId: 'marching_in_place', dose: '2 min' }] },
+    { block: 'metcon', title: 'Circuit', format: '5 rounds — rotate through, rest as needed', items: [
+      { movementId: 'sit_to_stand', dose: '5 rounds x 8 reps' },
+      { movementId: 'glute_bridge', dose: '5 rounds x 10 reps' },
+      { movementId: 'walk', dose: '5 rounds x 2 min easy walk' },
+    ] },
+    { block: 'cooldown', title: 'cd', items: [{ movementId: 'quad_stretch', dose: '30s' }] },
+  ],
+}
+const cres = validateAiWorkout(circuit, '2026-06-01', 1, p1, equipment)
+const cm = cres.workout?.blocks.find((b) => b.block === 'metcon')?.items.map((i) => i.dose)
+check('circuit: strips redundant "5 rounds x" from items', JSON.stringify(cm) === JSON.stringify(['8 reps', '10 reps', '2 min easy walk']))
+
 console.log(`\n${fail === 0 ? `PASS — ${pass}/${pass} checks` : `FAIL — ${fail} failing`}`)
