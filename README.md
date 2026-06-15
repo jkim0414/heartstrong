@@ -104,7 +104,7 @@ Each day generates **warmup + workout (strength and/or conditioning) + cooldown*
 
 - **Daily workout** — warm-up + workout (strength and/or conditioning) + cool-down, with plain-language coaching cues, scaling options, and suggested loads, built only from your equipment; sessions kept deliberately lean (~20–35 min)
 - **Two modes** — patient (your own recovery) or caregiver (follow a loved one)
-- **AI or built-in** — constantly-varied training programmed by Claude in weekly blocks, with a deterministic offline fallback; both safety-checked identically, plus consistency guardrails (honest time estimates, even rep counts for side-alternating movements)
+- **AI or built-in** — constantly-varied training programmed by Claude in weekly blocks, with a deterministic offline fallback; both safety-checked identically, plus consistency guardrails (honest time estimates, even rep counts for side-alternating movements, and clear circuit structure — multi-movement rounds spell out "do all of these in order, then repeat" rather than leaving rotation ambiguous)
 - **Tap-to-define glossary** — fitness jargon (AMRAP, EMOM, RPE, hinge…) is tappable/hoverable for a plain-English definition
 - **Daily readiness check** + an always-visible **warning signs / one-tap Call 911**, with the Safety sheet personalized from your health profile
 - **Editable equipment** (catalog + custom items) and an optional **health profile** (conditions / meds / care-team notes)
@@ -150,7 +150,8 @@ src/
                safety.ts (clinical content), equipment.ts (equipment catalog), glossary.ts (jargon definitions)
   engine/      phase.ts (phase determination), generator.ts (offline workout engine + shared eligibility),
                llm.ts (calls /api/generate), validate.ts (re-validates AI output against the safety rails),
-               normalize.ts (consistency guardrails: even reps for alternating moves, honest time estimate)
+               normalize.ts (consistency guardrails: even reps for alternating moves, honest time
+               estimate, clean per-round circuit doses)
   state/       store.tsx (state + cloud sync, streaks, milestones), auth.tsx (Supabase auth context)
   lib/         date.ts (date math + seeded RNG), supabase.ts (client; null in local-only mode), care.ts (caregiver sharing)
   components/  Today, WorkoutView, ReadinessCheck, History, Progress, Equipment, Settings, SafetySheet,
