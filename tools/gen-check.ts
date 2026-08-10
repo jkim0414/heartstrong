@@ -85,6 +85,39 @@ for (const s of scenarios) {
   }
 }
 
+// --- Phase ramp-in dwell: late sternal clearance must NOT catapult to P3 ---
+{
+  // Cleared at week 13 post-op: calendar says P3, dwell says P2 for 3 weeks.
+  const lateLift: Profile = {
+    ...base,
+    clearedForExercise: true,
+    sternalPrecautionsLifted: true,
+    sternalPrecautionsLiftedOn: '2026-08-07', // ~13.5 wks after 2026-05-05 surgery
+  }
+  const cases: [string, string, number][] = [
+    ['week 0 after lift', '2026-08-08', 2],
+    ['week 2 after lift', '2026-08-22', 2],
+    ['week 3 after lift (dwell served)', '2026-08-29', 3],
+    ['legacy profile without lift date', '2026-08-08', 3],
+  ]
+  for (const [label, date, expected] of cases) {
+    const prof = label.startsWith('legacy') ? { ...lateLift, sternalPrecautionsLiftedOn: undefined } : lateLift
+    const got = determinePhase(prof, date).phase
+    if (got !== expected) {
+      console.log(`  !!! VIOLATION: dwell rule (${label}): expected P${expected}, got P${got}`)
+      problems++
+    } else {
+      console.log(`  ok  dwell rule (${label}): P${got}`)
+    }
+  }
+  // On-time clearance (week 7) is unaffected by the dwell: still P2 by calendar,
+  // and P3 arrives at week 10 as before (dwell already served by then).
+  const onTime: Profile = { ...base, clearedForExercise: true, sternalPrecautionsLifted: true, sternalPrecautionsLiftedOn: '2026-06-23' }
+  const atW10 = determinePhase(onTime, '2026-07-14').phase
+  if (atW10 !== 3) { console.log(`  !!! VIOLATION: on-time clearance should reach P3 at week 10, got P${atW10}`); problems++ }
+  else console.log('  ok  dwell rule (on-time clearance unaffected): P3 at week 10')
+}
+
 console.log(`\n${problems === 0 ? 'PASS — no guardrail violations' : `FAIL — ${problems} violations`}`)
 
 function dow(d: string): string {

@@ -33,6 +33,12 @@ interface ReqBody {
   weekDays?: { date: string; weekdayName: string; suggestedFocus: string }[]
   /** Short adherence summary of the recent past, e.g. completed/missed counts. */
   adherence?: string
+  /** Recent prescribed-vs-felt log lines (loads, felt RPE, weight feel, scores). */
+  recentActuals?: string
+  /** Owned equipment recent programming hasn't used. */
+  underusedEquipment?: string[]
+  /** Weeks since sternal precautions lifted (null/absent if unknown). */
+  weeksSinceSternalLift?: number | null
 }
 
 const MODEL = 'claude-sonnet-4-6'
@@ -45,7 +51,13 @@ The product philosophy is "scaled CrossFit" — constantly varied, genuinely eff
 
 KEEP IT LEAN — fewer movements done well beats a long, sprawling session. The medical and fitness benefit comes from consistency at moderate effort, not volume, and a long list of exercises just adds friction and fatigue for a deconditioned older beginner. Achieve variety mainly through the FORMAT and the few movements you choose — NOT by piling on more exercises. Aim for about 8 distinct movements across the whole session (and never more than ~10): roughly a 3-movement warm-up, a main block of just 2–3 movements, and a 3-movement cool-down. Resist the urge to add "one more".
 
-WEEKLY PROGRAMMING: When the request lists multiple days, you are programming a training BLOCK, the way a real coach plans a week — not improvising days in isolation. Plan the listed days as one coherent whole: respect each day's suggested focus; vary the formats and themes across the week so no two days feel alike; and balance the loaded movement patterns (squat, hinge, push, pull, lunge, carry) across days so the same heavy pattern is never emphasized two training days in a row — a pattern worked hard one day should get lighter or no emphasis the next. Distribute harder and easier days sensibly (a harder day is followed by an easier one). Rest and recovery days are handled by the app and are not in your list. If an adherence note says recent workouts were missed, ease the first day or two back in rather than resuming at full intensity.
+WEEKLY PROGRAMMING: When the request lists multiple days, you are programming a training BLOCK, the way a real coach plans a week — not improvising days in isolation. Plan the listed days as one coherent whole: respect each day's suggested focus; vary the formats and themes across the week so no two days feel alike; and balance the loaded movement patterns (squat, hinge, push, pull, lunge, carry) across days so the same heavy pattern is never emphasized two training days in a row — a pattern worked hard one day should get lighter or no emphasis the next. Distribute harder and easier days sensibly (a harder day is followed by an easier one). Include core/midline work at least twice across the week. Rest and recovery days are handled by the app and are not in your list. If an adherence note says recent workouts were missed, ease the first day or two back in rather than resuming at full intensity.
+
+PROGRESSION: When the request includes a recent-training log (what was prescribed vs how it felt), use it to progress DELIBERATELY, like a coach reviewing a training journal. If recent sessions consistently felt easy (felt effort at or below the bottom of the prescribed range, or weights reported "too light"), step loads up to the next available weight he owns and/or add a modest amount of volume — one variable at a time, roughly 5-10% per week, never both a big load jump and a big volume jump at once. If anything felt "too heavy" or effort came in above the prescribed range, step back down and consolidate. If there is no log or it is mixed, hold steady. Never progress past the phase's effort ceiling.
+
+UPPER-BODY RAMP-IN: If the request says sternal precautions lifted fewer than 4 weeks ago, the chest and arms are newly cleared after months of no loading: keep pressing/pushing exposures to one or two per week at light loads, prefer supported rows and hinges before presses, and introduce push-ups only from an incline. Progress upper-body load slower than lower-body.
+
+EQUIPMENT ROTATION: If the request lists owned-but-recently-unused equipment, feature at least one of those items somewhere in the block where it genuinely fits (a rowing machine is a first-class conditioning tool, not an afterthought). Keep the movement pool wide — do not let the programming settle into the same few implements.
 
 VOICE: All text you write (title, summary, format lines, notes) speaks directly TO the person exercising in the second person ("you"/"your"). Never refer to him in the third person ("he"/"his") — the app is read by the user himself.
 
@@ -183,9 +195,9 @@ export default async function handler(req: any, res: any) {
     const sharedContext = `${background}
 Phase: ${body.phaseName} — ${body.phaseTagline}
 Target effort: RPE ${body.rpeLow}–${body.rpeHigh}. Talk test: ${body.talkTest}
-Upper-body/chest loading allowed: ${body.allowsSternalLoad ? 'yes' : 'NO — keep all load off the arms/chest'}
+Upper-body/chest loading allowed: ${body.allowsSternalLoad ? 'yes' : 'NO — keep all load off the arms/chest'}${body.allowsSternalLoad && body.weeksSinceSternalLift != null ? ` (sternal precautions lifted ${body.weeksSinceSternalLift} week${body.weeksSinceSternalLift === 1 ? '' : 's'} ago — see UPPER-BODY RAMP-IN if under 4)` : ''}
 Loadable equipment he owns (use these weights for loadLb): ${Object.keys(body.loads).length ? Object.entries(body.loads).map(([k, v]) => `${k}: ${v.join('/')} lb`).join('; ') : 'none'}
-Recent session titles (make new days feel different): ${body.recentTitles.length ? body.recentTitles.join('; ') : 'none yet'}`
+${body.underusedEquipment?.length ? `Owned but not used in recent programming (see EQUIPMENT ROTATION): ${body.underusedEquipment.join(', ')}\n` : ''}${body.recentActuals ? `Recent training log (prescribed vs how it landed — see PROGRESSION):\n${body.recentActuals}\n` : ''}Recent session titles (make new days feel different): ${body.recentTitles.length ? body.recentTitles.join('; ') : 'none yet'}`
 
     const movementList = `Movements you may use (use the exact id):
 ${body.movements.map((m) => `- ${m.id} — ${m.name} [${m.pattern}]`).join('\n')}`
@@ -250,6 +262,7 @@ Compose a varied, engaging session within all the safety rules and call submit_w
     // Return the model's structured input; the client validates it.
     res.status(200).json(toolUse.input)
   } catch (e: any) {
+    console.error('generate failed:', e)
     res.status(500).json({ error: 'Generation failed', detail: String(e?.message ?? e).slice(0, 300) })
   }
 }

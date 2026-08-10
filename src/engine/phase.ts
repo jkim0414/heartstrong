@@ -1,6 +1,9 @@
 import type { PhaseId, Profile, ISODate } from '../types'
 import { weeksSince, todayISO } from '../lib/date'
 
+/** Weeks of Phase-2 rebuilding required after sternal precautions lift before Phase 3+. */
+export const P2_DWELL_WEEKS = 3
+
 export interface PhaseResult {
   phase: PhaseId
   /** Whether the phase is from an explicit manual override. */
@@ -60,15 +63,30 @@ export function determinePhase(profile: Profile, today: ISODate = todayISO()): P
 
   // Cleared + sternum healed: progress by time under training (from the later
   // of surgery date or a sensible baseline) using weeks post-op as a proxy.
+  //
+  // Ramp-in rail: whatever the calendar says, Phase 3+ must be EARNED with a
+  // few weeks of Phase-2 rebuilding after precautions lift. Someone cleared
+  // late (e.g. week 13) detrained through the whole early window — jumping
+  // straight to Phase-3 intensity skips the graded reloading that cardiac-
+  // rehab progression is built on. Legacy profiles without the date recorded
+  // are treated as having served the dwell.
   const w = weeksPostOp ?? 8
+  const weeksSinceLift = profile.sternalPrecautionsLiftedOn ? weeksSince(profile.sternalPrecautionsLiftedOn, today) : null
+  const dwellRemaining = weeksSinceLift == null ? 0 : Math.max(0, P2_DWELL_WEEKS - weeksSinceLift)
   let phase: PhaseId
   let reason: string
   let nudge: string | null
 
-  if (w < 10) {
+  if (w < 10 || dwellRemaining > 0) {
     phase = 2
-    reason = 'Sternum healed and cleared — building back with light resistance and steady intervals.'
-    nudge = 'Once you’ve strung together a few consistent weeks here, the plan will progress to heavier, more varied work.'
+    reason =
+      w < 10
+        ? 'Sternum healed and cleared — building back with light resistance and steady intervals.'
+        : 'Sternum healed and cleared — rebuilding with light resistance and steady intervals after the layoff, before the program steps up.'
+    nudge =
+      w < 10
+        ? 'Once you’ve strung together a few consistent weeks here, the plan will progress to heavier, more varied work.'
+        : `About ${dwellRemaining} more week${dwellRemaining === 1 ? '' : 's'} of rebuilding here, then the program steps up to heavier, more varied work.`
   } else if (w < 18) {
     phase = 3
     reason = 'Past the early window and training consistently — time to progress strength and conditioning.'

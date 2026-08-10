@@ -4,6 +4,7 @@ import type {
   DayStatus,
   EquipmentItem,
   ISODate,
+  LogEntry,
   Pattern,
   Profile,
   Workout,
@@ -208,7 +209,7 @@ interface Store {
   workoutFor: (date: ISODate) => Workout
   /** Loaded movement patterns emphasized the day before `date` (Phase 3+ only; else empty). */
   recentPatternsFor: (date: ISODate) => Pattern[]
-  setDayStatus: (date: ISODate, status: DayStatus, extras?: { notes?: string; feltRpe?: number; workoutTitle?: string }) => void
+  setDayStatus: (date: ISODate, status: DayStatus, extras?: { notes?: string; feltRpe?: number; workoutTitle?: string; loadFeel?: LogEntry['loadFeel']; score?: string }) => void
   clearDay: (date: ISODate) => void
   setOverride: (date: ISODate, ov: 'easier' | 'rest' | null) => void
   setAiWorkout: (date: ISODate, workout: Workout) => void
@@ -334,6 +335,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               status,
               notes: extras?.notes ?? s.log[date]?.notes,
               feltRpe: extras?.feltRpe ?? s.log[date]?.feltRpe,
+              loadFeel: extras?.loadFeel ?? s.log[date]?.loadFeel,
+              score: extras?.score ?? s.log[date]?.score,
               workoutTitle: extras?.workoutTitle ?? s.log[date]?.workoutTitle,
               markedAt: new Date().toISOString(),
             },
@@ -367,7 +370,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           .filter((t): t is string => !!t),
       setReadiness: (date, ok, flagged) =>
         setState((s) => ({ ...s, readiness: { ...s.readiness, [date]: { ok, flagged } } })),
-      updateProfile: (patch) => setState((s) => ({ ...s, profile: { ...s.profile, ...patch } })),
+      updateProfile: (patch) =>
+        setState((s) => {
+          const next = { ...s.profile, ...patch }
+          // Stamp when sternal precautions lift (drives the Phase-2 ramp-in
+          // dwell); clear the stamp if they're ever re-instated.
+          if (patch.sternalPrecautionsLifted === true && !s.profile.sternalPrecautionsLifted) {
+            next.sternalPrecautionsLiftedOn = todayISO()
+          } else if (patch.sternalPrecautionsLifted === false && s.profile.sternalPrecautionsLifted) {
+            next.sternalPrecautionsLiftedOn = null
+          }
+          return { ...s, profile: next }
+        }),
       updateEquipment: (eq) => setState((s) => ({ ...s, equipment: eq })),
       resetAll: () => setState(defaultState()),
       importLocalData: () => setState(loadLocal(STORAGE_KEY)),

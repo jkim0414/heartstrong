@@ -2,7 +2,7 @@ import type { EquipmentItem, ISODate, Pattern, PhaseId, Profile, RawAiWorkout, W
 import { PHASES, WEEKLY_SCHEDULE } from '../data/phases'
 import { getEligibleMovements, loadableLoads } from './generator'
 import { validateAiWeek, validateAiWorkout } from './validate'
-import { weekday } from '../lib/date'
+import { weekday, weeksSince } from '../lib/date'
 import { getAccessToken } from '../state/auth'
 
 /** Endpoint for the serverless function that holds the API key. */
@@ -25,6 +25,12 @@ export interface AiRequest {
   recentTitles: string[]
   /** Loaded movement patterns emphasized yesterday — steer today's emphasis away from these. */
   recentPatterns: Pattern[]
+  /** Recent prescribed-vs-felt log lines, for deliberate load/volume progression. */
+  recentActuals?: string
+  /** Owned equipment recent programming hasn't used — feature to keep the pool wide. */
+  underusedEquipment?: string[]
+  /** Weeks since sternal precautions lifted (null if unknown) — gates pressing ramp-in. */
+  weeksSinceSternalLift?: number | null
   /** The ONLY movements the model may use — already safety-filtered. */
   movements: { id: string; name: string; pattern: string; cue: string }[]
   /** Optional health background, for caution context only. */
@@ -67,6 +73,7 @@ function buildRequest(
     loads: loadableLoads(equipment),
     recentTitles: recentTitles.slice(0, 10),
     recentPatterns: phase >= 3 ? recentPatterns : [],
+    weeksSinceSternalLift: profile.sternalPrecautionsLiftedOn ? weeksSince(profile.sternalPrecautionsLiftedOn, date) : null,
     movements,
     conditions: profile.conditions || undefined,
     medications: profile.medications || undefined,
@@ -122,7 +129,7 @@ export async function fetchAiWeek(
   equipment: EquipmentItem[],
   recentTitles: string[],
   recentPatterns: Pattern[] = [],
-  adherence?: string,
+  context?: { adherence?: string; recentActuals?: string; underusedEquipment?: string[] },
 ): Promise<Record<ISODate, Workout> | null> {
   if (dates.length === 0) return {}
   try {
@@ -133,7 +140,9 @@ export async function fetchAiWeek(
         weekdayName: WD[weekday(d)],
         suggestedFocus: WEEKLY_SCHEDULE[phase][weekday(d)],
       })),
-      adherence,
+      adherence: context?.adherence,
+      recentActuals: context?.recentActuals || undefined,
+      underusedEquipment: context?.underusedEquipment?.length ? context.underusedEquipment : undefined,
     }
     const token = await getAccessToken()
     const res = await fetch(ENDPOINT, {

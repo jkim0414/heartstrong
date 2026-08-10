@@ -122,6 +122,10 @@ export interface LogEntry {
   notes?: string
   /** How hard it felt, if they logged it (Borg CR10). */
   feltRpe?: number
+  /** How the prescribed weights felt (only asked when the day had loaded work). */
+  loadFeel?: 'light' | 'right' | 'heavy'
+  /** Optional self-reported score for the conditioning piece (rounds/time). */
+  score?: string
   /** ISO timestamp when marked. */
   markedAt: string
   /** Snapshot title of what they did, for history. */
@@ -138,6 +142,13 @@ export interface Profile {
   clearedForExercise: boolean
   /** Surgeon has lifted sternal precautions (cleared for upper-body loading). */
   sternalPrecautionsLifted: boolean
+  /**
+   * When precautions were marked lifted (stamped automatically by the store).
+   * Drives the post-clearance ramp-in: Phase 3+ requires a few weeks of Phase-2
+   * rebuilding after this date, regardless of calendar weeks post-op. Absent on
+   * legacy profiles -> dwell treated as satisfied.
+   */
+  sternalPrecautionsLiftedOn?: ISODate | null
   /** Manual phase override (advanced; otherwise auto from dates). null = auto. */
   phaseOverride: PhaseId | null
   /** Whether onboarding has been completed. */

@@ -34,6 +34,8 @@ For the CrossFit "constantly varied, never the same" feel, the app generates tra
 
 **Programming is planned weekly, not improvised daily.** Like a real coach, the model programs the week's training days as one coherent block: formats vary across the week, loaded movement patterns are balanced so the same heavy pattern isn't emphasized two training days in a row, harder days are followed by easier ones, and a recent-adherence note lets it ease back in after missed days. The plan is cached per day and synced, so what a caregiver sees in the morning is the patient's actual session. Remaining days re-plan automatically if the recovery phase changes mid-week, and "New variation" re-rolls just one day. Rest and active-recovery days always come from the built-in engine.
 
+**It progresses like a coach reviewing a training journal.** Logging a workout can capture how the weights felt (too light / about right / too heavy) and an optional score alongside effort; the planner receives the recent prescribed-vs-felt log and steps loads or volume deliberately — one variable at a time, never past the phase's effort ceiling. It's also told which owned equipment recent programming hasn't touched (so the movement pool can't quietly narrow), keeps core work in every week, and reintroduces pressing gradually in the first weeks after sternal clearance.
+
 It's wired to be **safe and key-safe**:
 
 - The model may **only choose from the safety-filtered movement list** the app sends it (already excludes chest-loading and out-of-phase movements). It controls structure/format/selection/dosing/titles — not medical cues, which always come from the vetted library.
@@ -89,7 +91,7 @@ An optional, free-text place (Settings) to record **conditions, current medicati
 
 ## The phase engine
 
-Phase is determined automatically from surgery date + clearance flags (override available in Settings, but the sternal guardrail always holds):
+Phase is determined automatically from surgery date + clearance flags (override available in Settings, but the sternal guardrail always holds). **Phase 3 must be earned, not aged into:** whenever sternal precautions lift, the engine holds Phase 2 for a few weeks of rebuilding before stepping up — so someone cleared late (already 12+ weeks post-op by the calendar) still gets a graded reloading period instead of jumping straight to higher intensity after months of detraining.
 
 - **Phase 1 · Recover** — walking, breathing, gentle *unloaded* legs. RPE 2–3. (Until cleared + sternum healed.)
 - **Phase 2 · Rebuild** — light dumbbell strength + steady intervals. RPE 3–5. (After sternal precautions lift.)

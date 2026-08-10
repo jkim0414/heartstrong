@@ -6,6 +6,7 @@ import { WorkoutView } from './WorkoutView'
 import { ReadinessCheck } from './ReadinessCheck'
 import { addDays, formatLong, weekday } from '../lib/date'
 import { determinePhase } from '../engine/phase'
+import { MOVEMENTS_BY_ID } from '../data/movements'
 import { fetchAiWeek, fetchAiWorkout } from '../engine/llm'
 import { Glossarize } from './Glossarize'
 import { StreakCelebration } from './StreakCelebration'
@@ -71,6 +72,52 @@ export function Today() {
     return `over the last 7 days he completed ${done}, logged ${rest} rest, missed ${missed}.`
   }
 
+  // Recent training actuals — what was prescribed vs how it landed — so the
+  // planner can progress loads/volume deliberately instead of guessing.
+  const recentActuals = (): string => {
+    const lines: string[] = []
+    for (let i = 1; i <= 14 && lines.length < 8; i++) {
+      const d = addDays(today, -i)
+      const e = state.log[d]
+      if (e?.status !== 'completed') continue
+      const ai = state.aiCache[d]
+      const loads = ai
+        ? ai.blocks
+            .flatMap((b) => b.items)
+            .filter((it) => it.loadLb != null)
+            .map((it) => `${it.movementId}@${it.loadLb}`)
+            .join(', ')
+        : ''
+      const parts = [
+        `${d}: "${e.workoutTitle ?? 'workout'}"`,
+        ai ? `prescribed RPE ${ai.rpeLow}-${ai.rpeHigh}` : '',
+        loads ? `loads: ${loads}` : '',
+        e.feltRpe != null ? `felt RPE ${e.feltRpe}` : '',
+        e.loadFeel ? `weights felt: ${e.loadFeel === 'light' ? 'too light' : e.loadFeel === 'heavy' ? 'too heavy' : 'about right'}` : '',
+        e.score ? `score: ${e.score}` : '',
+      ].filter(Boolean)
+      lines.push(parts.join(' · '))
+    }
+    return lines.reverse().join('\n')
+  }
+
+  // Owned equipment that recent programming hasn't touched — surface it to the
+  // planner so the movement pool doesn't quietly narrow (e.g. a new rower).
+  const underusedEquipment = (): string[] => {
+    const used = new Set<string>()
+    for (let i = 0; i <= 14; i++) {
+      const ai = state.aiCache[addDays(today, -i)]
+      if (!ai) continue
+      for (const b of ai.blocks) for (const it of b.items) {
+        const m = MOVEMENTS_BY_ID[it.movementId]
+        for (const r of m?.requires ?? []) used.add(r)
+      }
+    }
+    return state.equipment
+      .filter((e) => e.owned && e.id !== 'bodyweight' && e.id !== 'openspace' && !used.has(e.id))
+      .map((e) => e.label)
+  }
+
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return
     let cancelled = false
@@ -87,7 +134,11 @@ export function Today() {
       const needed = neededAiDates()
       if (needed.length === 0) return
       if (needed[0] === today) setAiLoading(true)
-      fetchAiWeek(needed, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(needed[0]), adherenceSummary()).then((w) => {
+      fetchAiWeek(needed, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(needed[0]), {
+        adherence: adherenceSummary(),
+        recentActuals: recentActuals(),
+        underusedEquipment: underusedEquipment(),
+      }).then((w) => {
         if (cancelled) return
         if (w) setAiWorkouts(w)
         setAiLoading(false)
@@ -269,9 +320,11 @@ export function Today() {
             </>
           ) : (
             <CompletePanel
+              hadLoads={workout.blocks.some((b) => b.items.some((it) => it.loadLb != null))}
+              hadMetcon={workout.blocks.some((b) => b.block === 'metcon')}
               onCancel={() => setCompleting(false)}
-              onSave={(notes, feltRpe) => {
-                setDayStatus(today, 'completed', { notes, feltRpe, workoutTitle: workout.title })
+              onSave={(notes, feltRpe, loadFeel, score) => {
+                setDayStatus(today, 'completed', { notes, feltRpe, loadFeel, score, workoutTitle: workout.title })
                 setCompleting(false)
                 // Today isn't counted until it's logged, so completing it adds one.
                 setCelebrateStreak(stats.currentStreak + 1)
@@ -288,9 +341,21 @@ export function Today() {
   )
 }
 
-function CompletePanel({ onSave, onCancel }: { onSave: (notes: string, feltRpe?: number) => void; onCancel: () => void }) {
+function CompletePanel({
+  hadLoads,
+  hadMetcon,
+  onSave,
+  onCancel,
+}: {
+  hadLoads: boolean
+  hadMetcon: boolean
+  onSave: (notes: string, feltRpe?: number, loadFeel?: 'light' | 'right' | 'heavy', score?: string) => void
+  onCancel: () => void
+}) {
   const [notes, setNotes] = useState('')
   const [rpe, setRpe] = useState<number | undefined>(undefined)
+  const [loadFeel, setLoadFeel] = useState<'light' | 'right' | 'heavy' | undefined>(undefined)
+  const [score, setScore] = useState('')
   return (
     <Card className="space-y-4 p-5">
       <p className="text-lg font-bold text-slate-900">How did it go?</p>
@@ -309,6 +374,40 @@ function CompletePanel({ onSave, onCancel }: { onSave: (notes: string, feltRpe?:
         </div>
         <p className="mt-1 text-xs text-slate-400">1 = very easy · 10 = maximal (you should rarely go above 7–8)</p>
       </div>
+      {hadLoads && (
+        <div>
+          <p className="text-sm font-semibold text-slate-700">How were the weights? (optional)</p>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {(
+              [
+                ['light', 'Too light'],
+                ['right', 'About right'],
+                ['heavy', 'Too heavy'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setLoadFeel(id === loadFeel ? undefined : id)}
+                className={`rounded-lg py-2.5 text-sm font-semibold ${loadFeel === id ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-slate-400">This helps next week’s plan pick better weights.</p>
+        </div>
+      )}
+      {hadMetcon && (
+        <div>
+          <p className="text-sm font-semibold text-slate-700">Score (optional)</p>
+          <input
+            value={score}
+            onChange={(e) => setScore(e.target.value)}
+            placeholder="e.g. 4 rounds + 10, or 12:30"
+            className="mt-2 w-full rounded-xl border-0 bg-slate-100 px-4 py-3 text-base ring-1 ring-slate-200 focus:ring-2 focus:ring-brand-500"
+          />
+        </div>
+      )}
       <div>
         <p className="text-sm font-semibold text-slate-700">Notes (optional)</p>
         <textarea
@@ -320,7 +419,7 @@ function CompletePanel({ onSave, onCancel }: { onSave: (notes: string, feltRpe?:
         />
       </div>
       <div className="flex gap-2">
-        <Button variant="success" full onClick={() => onSave(notes.trim(), rpe)}>
+        <Button variant="success" full onClick={() => onSave(notes.trim(), rpe, loadFeel, score.trim() || undefined)}>
           Save
         </Button>
         <Button variant="ghost" onClick={onCancel}>
