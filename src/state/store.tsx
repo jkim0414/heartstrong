@@ -9,7 +9,8 @@ import type {
   Profile,
   Workout,
 } from '../types'
-import { generateWorkout, loadedPatternsOf } from '../engine/generator'
+import { deterministicFor, planFor, recentPatternsFor } from '../engine/plan'
+import { decideSync, type CloudResult, type SyncMeta } from './sync'
 import { determinePhase, type PhaseResult } from '../engine/phase'
 import { addDays, todayISO } from '../lib/date'
 import { defaultEquipment } from '../data/equipment'
@@ -87,16 +88,56 @@ export function hasLegacyLocalData(): boolean {
   }
 }
 
-async function loadCloud(userId: string): Promise<AppState | null> {
-  if (!supabase) return null
-  const { data, error } = await supabase.from('app_state').select('state').eq('user_id', userId).maybeSingle()
-  if (error || !data?.state) return null
-  return mergeState(data.state as Partial<AppState>)
+/** This device's cached copy for `key`, or null if it has none. */
+function readLocal(key: string): AppState | null {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? mergeState(JSON.parse(raw) as Partial<AppState>) : null
+  } catch {
+    return null
+  }
 }
 
-async function saveCloud(userId: string, state: AppState): Promise<void> {
-  if (!supabase) return
-  await supabase.from('app_state').upsert({ user_id: userId, state, updated_at: new Date().toISOString() })
+function loadMeta(key: string): SyncMeta {
+  try {
+    const raw = localStorage.getItem(`${key}::sync`)
+    if (raw) return JSON.parse(raw) as SyncMeta
+  } catch {
+    /* fall through */
+  }
+  return { lastSyncedAt: null, dirty: false }
+}
+
+function saveMeta(key: string, meta: SyncMeta) {
+  try {
+    localStorage.setItem(`${key}::sync`, JSON.stringify(meta))
+  } catch {
+    /* non-fatal */
+  }
+}
+
+async function loadCloud(userId: string): Promise<CloudResult> {
+  if (!supabase) return { ok: false }
+  try {
+    const { data, error } = await supabase.from('app_state').select('state, updated_at').eq('user_id', userId).maybeSingle()
+    if (error) return { ok: false }
+    if (!data?.state) return { ok: true, state: null, updatedAt: null }
+    return { ok: true, state: mergeState(data.state as Partial<AppState>), updatedAt: (data.updated_at as string) ?? null }
+  } catch {
+    return { ok: false }
+  }
+}
+
+/** Upload the whole state. Returns the stored `updated_at`, or null on failure. */
+async function saveCloud(userId: string, state: AppState): Promise<string | null> {
+  if (!supabase) return null
+  const updatedAt = new Date().toISOString()
+  try {
+    const { error } = await supabase.from('app_state').upsert({ user_id: userId, state, updated_at: updatedAt })
+    return error ? null : updatedAt
+  } catch {
+    return null
+  }
 }
 
 // ---- Derived stats --------------------------------------------------------
@@ -206,7 +247,10 @@ interface Store {
   today: ISODate
   phaseResult: PhaseResult
   stats: Stats
+  /** The built-in engine's plan for `date` (overrides honored). */
   workoutFor: (date: ISODate) => Workout
+  /** The plan the patient sees/saw for `date`: valid cached AI plan, else built-in. */
+  planFor: (date: ISODate) => { workout: Workout; isAi: boolean }
   /** Loaded movement patterns emphasized the day before `date` (Phase 3+ only; else empty). */
   recentPatternsFor: (date: ISODate) => Pattern[]
   setDayStatus: (date: ISODate, status: DayStatus, extras?: { notes?: string; feltRpe?: number; workoutTitle?: string; loadFeel?: LogEntry['loadFeel']; score?: string }) => void
@@ -216,6 +260,7 @@ interface Store {
   /** Cache several days at once (weekly plan) — one state update, one sync. */
   setAiWorkouts: (workouts: Record<ISODate, Workout>) => void
   clearAiWorkout: (date: ISODate) => void
+  /** Titles of recently completed workouts, newest first. */
   recentTitles: () => string[]
   setReadiness: (date: ISODate, ok: boolean, flagged: string[]) => void
   updateProfile: (patch: Partial<Profile>) => void
@@ -229,6 +274,16 @@ interface Store {
 
 const StoreContext = createContext<Store | null>(null)
 
+/** Cached AI plans older than this are dropped — the whole state is re-uploaded on every change. */
+const AI_CACHE_RETENTION_DAYS = 120
+
+function pruneAiCache(cache: AppState['aiCache'], today: ISODate): AppState['aiCache'] {
+  const cutoff = addDays(today, -AI_CACHE_RETENTION_DAYS)
+  const out: AppState['aiCache'] = {}
+  for (const [d, w] of Object.entries(cache)) if (d >= cutoff) out[d] = w
+  return out
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const userId = auth.user?.id ?? null
@@ -236,14 +291,77 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const [state, setState] = useState<AppState>(() => loadLocal(STORAGE_KEY))
   const [hydrated, setHydrated] = useState<boolean>(!isAuthConfigured)
+  const [loadError, setLoadError] = useState(false)
+  const [retryNonce, setRetryNonce] = useState(0)
+  // Bumped when the app returns to the foreground so `today` rolls over even if
+  // the PWA was left open overnight.
+  const [, setClock] = useState(0)
   const today = todayISO()
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Latest state for async callbacks, and the last state object that came FROM
+  // the cloud (applying it must not trigger a redundant re-upload).
+  const stateRef = useRef(state)
+  stateRef.current = state
+  const remoteStateRef = useRef<AppState | null>(null)
+  const sync = useRef<{ meta: SyncMeta; verified: boolean; busy: boolean }>({
+    meta: { lastSyncedAt: null, dirty: false },
+    verified: false,
+    busy: false,
+  })
+  const persistMeta = () => saveMeta(storageKey, sync.current.meta)
+
+  /** Upload the current state if the cloud copy has been verified this session. */
+  const pushNow = async (): Promise<void> => {
+    if (!auth.configured || !userId) return
+    if (!sync.current.verified) return void reconcile()
+    const snapshot = stateRef.current
+    const at = await saveCloud(userId, snapshot)
+    if (at) {
+      sync.current.meta = { lastSyncedAt: at, dirty: stateRef.current !== snapshot }
+      persistMeta()
+    }
+  }
+
+  /** Re-read the cloud and settle any divergence (foreground, reconnect, first push). */
+  const reconcile = async (): Promise<void> => {
+    if (!auth.configured || !userId || sync.current.busy) return
+    sync.current.busy = true
+    try {
+      const cloud = await loadCloud(userId)
+      if (!cloud.ok) return
+      // Common case: nothing changed on either side — don't churn state.
+      if (cloud.state && cloud.updatedAt === sync.current.meta.lastSyncedAt && !sync.current.meta.dirty) {
+        sync.current.verified = true
+        return
+      }
+      const d = decideSync(cloud, stateRef.current, sync.current.meta, defaultState)
+      if (d.kind !== 'use') return
+      sync.current.verified = d.verified
+      sync.current.meta = { lastSyncedAt: d.lastSyncedAt, dirty: d.push }
+      persistMeta()
+      if (d.state !== stateRef.current) {
+        if (!d.push) remoteStateRef.current = d.state
+        setState(d.state)
+      }
+      if (d.push) {
+        const at = await saveCloud(userId, d.state)
+        if (at) {
+          sync.current.meta = { lastSyncedAt: at, dirty: false }
+          persistMeta()
+        }
+      }
+    } finally {
+      sync.current.busy = false
+    }
+  }
 
   // Load the correct state once the user's identity resolves.
   useEffect(() => {
     if (auth.status === 'loading') return
     let cancelled = false
     setHydrated(false)
+    setLoadError(false)
     void (async () => {
       if (!auth.configured) {
         if (!cancelled) {
@@ -256,75 +374,83 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setHydrated(true) // signed out; SignIn screen will show
         return
       }
+      const local = readLocal(storageKey)
+      const meta = loadMeta(storageKey)
       // Show this device's cached copy instantly, then reconcile with the cloud.
-      if (!cancelled) setState(loadLocal(storageKey))
+      if (local?.profile.onboarded) setState(local)
       const cloud = await loadCloud(userId)
       if (cancelled) return
-      if (cloud) {
-        setState(cloud)
-        saveLocal(storageKey, cloud)
-      } else {
-        // Brand-new account: start fresh (data can be imported from Settings).
-        const seed = defaultState()
-        setState(seed)
-        saveLocal(storageKey, seed)
-        await saveCloud(userId, seed)
+      const d = decideSync(cloud, local, meta, defaultState)
+      if (d.kind === 'error') {
+        // Couldn't reach the account and nothing cached here: never fall back
+        // to onboarding (a re-onboarded empty state would later overwrite the
+        // real cloud history). Offer a retry instead.
+        setLoadError(true)
+        return
       }
+      sync.current = { meta: { lastSyncedAt: d.lastSyncedAt, dirty: d.push || (!d.verified && meta.dirty) }, verified: d.verified, busy: false }
+      saveMeta(storageKey, sync.current.meta)
+      if (!d.push) remoteStateRef.current = d.state
+      setState(d.state)
+      saveLocal(storageKey, d.state)
       setHydrated(true)
+      if (d.push) {
+        const at = await saveCloud(userId, d.state)
+        if (at && !cancelled) {
+          sync.current.meta = { lastSyncedAt: at, dirty: false }
+          saveMeta(storageKey, sync.current.meta)
+        }
+      }
     })()
     return () => {
       cancelled = true
     }
-  }, [auth.status, auth.configured, userId, storageKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.status, auth.configured, userId, storageKey, retryNonce])
 
   // Persist on change: local cache always; cloud (debounced) when signed in.
   useEffect(() => {
     if (!hydrated) return
     saveLocal(storageKey, state)
-    if (auth.configured && userId) {
-      if (saveTimer.current) clearTimeout(saveTimer.current)
-      saveTimer.current = setTimeout(() => void saveCloud(userId, state), 800)
-    }
+    if (!auth.configured || !userId) return
+    if (state === remoteStateRef.current) return // just arrived from the cloud
+    sync.current.meta = { ...sync.current.meta, dirty: true }
+    persistMeta()
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => void pushNow(), 800)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, hydrated, storageKey, auth.configured, userId])
+
+  // Returning to the app (or regaining signal): roll the date over, pick up
+  // changes made elsewhere, and retry any upload that failed while offline.
+  useEffect(() => {
+    if (!hydrated) return
+    const onWake = () => {
+      if (document.visibilityState !== 'visible') return
+      setClock(Date.now())
+      void reconcile()
+    }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('online', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('online', onWake)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, userId])
 
   const phaseResult = useMemo(() => determinePhase(state.profile, today), [state.profile, today])
   const stats = useMemo(() => computeStats(state, today), [state, today])
 
   const store: Store = useMemo(() => {
-    // Loaded patterns emphasized the day before `date` — drives cross-day
-    // rotation. Gated to Phase 3+ (no point steering gentle recovery work).
-    // Reads yesterday's cached AI workout if present, else regenerates it
-    // WITHOUT recentPatterns to avoid infinite recursion.
-    const recentPatternsFor = (date: ISODate): Pattern[] => {
-      const pr = determinePhase(state.profile, date)
-      if (pr.phase < 3 || state.profile.phaseOverride != null) return []
-      const prev = addDays(date, -1)
-      // Skip if yesterday was a rest day — nothing to recover from.
-      if (state.log[prev]?.status === 'rest' || state.overrides[prev] === 'rest') return []
-      const cachedAi = state.aiCache[prev]
-      const prevPr = determinePhase(state.profile, prev)
-      const yesterday =
-        cachedAi && cachedAi.phase === prevPr.phase
-          ? cachedAi
-          : generateWorkout(prev, prevPr.phase, state.profile, state.equipment)
-      return loadedPatternsOf(yesterday)
-    }
-
-    const workoutFor = (date: ISODate): Workout => {
-      const pr = determinePhase(state.profile, date)
-      const ov = state.overrides[date]
-      const force = ov === 'rest' ? 'rest' : ov === 'easier' ? 'recovery_mobility' : undefined
-      const recent = force ? [] : recentPatternsFor(date)
-      return generateWorkout(date, pr.phase, state.profile, state.equipment, force, recent)
-    }
-
     return {
       state,
       today,
       phaseResult,
       stats,
-      workoutFor,
-      recentPatternsFor,
+      workoutFor: (date) => deterministicFor(state, date),
+      planFor: (date) => planFor(state, date, today),
+      recentPatternsFor: (date) => recentPatternsFor(state, date),
       setDayStatus: (date, status, extras) =>
         setState((s) => ({
           ...s,
@@ -355,8 +481,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           else overrides[date] = ov
           return { ...s, overrides }
         }),
-      setAiWorkout: (date, workout) => setState((s) => ({ ...s, aiCache: { ...s.aiCache, [date]: workout } })),
-      setAiWorkouts: (workouts) => setState((s) => ({ ...s, aiCache: { ...s.aiCache, ...workouts } })),
+      setAiWorkout: (date, workout) => setState((s) => ({ ...s, aiCache: pruneAiCache({ ...s.aiCache, [date]: workout }, todayISO()) })),
+      setAiWorkouts: (workouts) => setState((s) => ({ ...s, aiCache: pruneAiCache({ ...s.aiCache, ...workouts }, todayISO()) })),
       clearAiWorkout: (date) =>
         setState((s) => {
           const aiCache = { ...s.aiCache }
@@ -365,11 +491,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }),
       recentTitles: () =>
         Object.values(state.log)
+          .filter((e) => e.status === 'completed')
           .sort((a, b) => (a.markedAt < b.markedAt ? 1 : -1))
           .map((e) => e.workoutTitle)
           .filter((t): t is string => !!t),
+      // A symptom reported once today stays on record even if a later re-check
+      // passes — the caregiver should still see it. `ok` reflects the latest check.
       setReadiness: (date, ok, flagged) =>
-        setState((s) => ({ ...s, readiness: { ...s.readiness, [date]: { ok, flagged } } })),
+        setState((s) => {
+          const prior = s.readiness[date]?.flagged ?? []
+          return { ...s, readiness: { ...s.readiness, [date]: { ok, flagged: [...new Set([...prior, ...flagged])] } } }
+        }),
       updateProfile: (patch) =>
         setState((s) => {
           const next = { ...s.profile, ...patch }
@@ -388,6 +520,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       hasLegacyData: hasLegacyLocalData(),
     }
   }, [state, today, phaseResult, stats])
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-full flex-col items-center justify-center gap-4 bg-slate-100 px-6 text-center">
+        <p className="text-4xl">📡</p>
+        <p className="text-xl font-bold text-slate-900">Can’t reach your account</p>
+        <p className="max-w-sm text-base text-slate-600">
+          Check your internet connection and try again. Your workout history is safe — nothing has been changed.
+        </p>
+        <button
+          onClick={() => setRetryNonce((n) => n + 1)}
+          className="rounded-xl bg-brand-700 px-6 py-3 text-base font-semibold text-white"
+        >
+          Try again
+        </button>
+      </div>
+    )
+  }
 
   // Brief splash while the cloud copy loads for a signed-in user.
   if (auth.configured && (auth.status === 'loading' || (!!userId && !hydrated))) {

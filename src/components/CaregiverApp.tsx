@@ -45,7 +45,7 @@ export function CaregiverApp() {
           </div>
         </Card>
 
-        <p className="px-1 text-center text-xs text-slate-400">
+        <p className="px-1 text-center text-xs text-slate-500">
           You can see streaks, workouts, and notes the person chooses to share — you can’t change their plan.
         </p>
       </main>

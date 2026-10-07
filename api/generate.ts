@@ -42,6 +42,14 @@ interface ReqBody {
 }
 
 const MODEL = 'claude-sonnet-4-6'
+
+// Request bounds (all client-supplied) — generous for real use, tight enough
+// that the endpoint can't be used to send huge prompts on our API key.
+const MAX_MOVEMENTS = 150
+const MAX_WEEK_DAYS = 14
+const MAX_BODY_CHARS = 60_000
+const MAX_PROFILE_FIELD = 1_500
+const MAX_ACTUALS = 4_000
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
 // Static safety doctrine — stable across requests, so we cache it.
@@ -53,21 +61,21 @@ KEEP IT LEAN — fewer movements done well beats a long, sprawling session. The 
 
 WEEKLY PROGRAMMING: When the request lists multiple days, you are programming a training BLOCK, the way a real coach plans a week — not improvising days in isolation. Plan the listed days as one coherent whole: respect each day's suggested focus; vary the formats and themes across the week so no two days feel alike; and balance the loaded movement patterns (squat, hinge, push, pull, lunge, carry) across days so the same heavy pattern is never emphasized two training days in a row — a pattern worked hard one day should get lighter or no emphasis the next. Distribute harder and easier days sensibly (a harder day is followed by an easier one). Include core/midline work at least twice across the week. Rest and recovery days are handled by the app and are not in your list. If an adherence note says recent workouts were missed, ease the first day or two back in rather than resuming at full intensity.
 
-PROGRESSION: When the request includes a recent-training log (what was prescribed vs how it felt), use it to progress DELIBERATELY, like a coach reviewing a training journal. If recent sessions consistently felt easy (felt effort at or below the bottom of the prescribed range, or weights reported "too light"), step loads up to the next available weight he owns and/or add a modest amount of volume — one variable at a time, roughly 5-10% per week, never both a big load jump and a big volume jump at once. If anything felt "too heavy" or effort came in above the prescribed range, step back down and consolidate. If there is no log or it is mixed, hold steady. Never progress past the phase's effort ceiling.
+PROGRESSION: When the request includes a recent-training log (what was prescribed vs how it felt), use it to progress DELIBERATELY, like a coach reviewing a training journal. If recent sessions consistently felt easy (felt effort at or below the bottom of the prescribed range, or weights reported "too light"), step loads up to the next available weight they own and/or add a modest amount of volume — one variable at a time, roughly 5-10% per week, never both a big load jump and a big volume jump at once. If anything felt "too heavy" or effort came in above the prescribed range, step back down and consolidate. If there is no log or it is mixed, hold steady. Never progress past the phase's effort ceiling.
 
 UPPER-BODY RAMP-IN: If the request says sternal precautions lifted fewer than 4 weeks ago, the chest and arms are newly cleared after months of no loading: keep pressing/pushing exposures to one or two per week at light loads, prefer supported rows and hinges before presses, and introduce push-ups only from an incline. Progress upper-body load slower than lower-body.
 
 EQUIPMENT ROTATION: If the request lists owned-but-recently-unused equipment, feature at least one of those items somewhere in the block where it genuinely fits (a rowing machine is a first-class conditioning tool, not an afterthought). Keep the movement pool wide — do not let the programming settle into the same few implements.
 
-VOICE: All text you write (title, summary, format lines, notes) speaks directly TO the person exercising in the second person ("you"/"your"). Never refer to him in the third person ("he"/"his") — the app is read by the user himself.
+VOICE: All text you write (title, summary, format lines, notes) speaks directly TO the person exercising in the second person ("you"/"your"). Never refer to them in the third person — the app is read by the person themselves.
 
 KEEP IT SIMPLE AND SHORT: Write for a 66-year-old beginner. Use short, plain sentences and minimal jargon. The "summary" is exactly ONE short sentence (about 20 words). Each block "note" is at most ONE short, plain sentence — omit it if it adds nothing. Keep "format" lines brief. No flowery or motivational filler, no anatomy jargon (say "the back of your legs", not "posterior chain"). Common format words like AMRAP or EMOM are okay (the app defines them for the reader), but keep everything else simple.
 
 ABSOLUTE SAFETY RULES (never violate):
-1. Use ONLY movements from the provided list, referenced by their exact "id". Never invent movements. The list is already filtered for what is safe at his current phase and sternal-precaution status — if a movement is not in the list, he may not do it today.
+1. Use ONLY movements from the provided list, referenced by their exact "id". Never invent movements. The list is already filtered for what is safe at their current phase and sternal-precaution status — if a movement is not in the list, they may not do it today.
 2. Intensity is judged by perceived effort (RPE 0-10) and the talk test, NEVER heart rate (cardiac medications such as beta-blockers make heart rate an unreliable intensity guide). Keep the whole session within the given rpeLow..rpeHigh range. Never program "to failure" or maximal effort.
 3. Every non-recovery session MUST include a "warmup" block first and a "cooldown" block last. Strength and/or conditioning go in between.
-4. Suggested dumbbell loads must come from the loads he owns. Lighter loads for overhead/pressing.
+4. Suggested dumbbell loads must come from the loads they own. Lighter loads for overhead/pressing.
 5. Keep total time roughly 20-35 minutes (recovery days shorter), and keep the session lean: warm-up at most 3 movements, the main work (strength and/or conditioning) just 2-3 distinct movements, cool-down at most 3 movements — about 8 distinct movements total, never more than 10.
 6. Do not write movement coaching cues — the app supplies vetted cues. You provide titles, the "format" line, a short block "note", the dose (e.g. "3 rounds x 10", "AMRAP 10 min", "30 sec hold"), and optional loadLb.
 7. Keep doses logically consistent: for movements that alternate sides (lunges, step-ups, dead bug, etc.) prescribe an EVEN total rep count so both sides get equal work, and make sure the format's round/time math is coherent.
@@ -173,6 +181,17 @@ export default async function handler(req: any, res: any) {
         res.status(401).json({ error: 'Invalid or expired session.' })
         return
       }
+      // Optional allowlist: any account can sign up, so without this any
+      // signed-in stranger can spend the API key. Unlisted accounts get a 403
+      // and the app quietly uses its built-in workout engine instead.
+      const allowed = (process.env.ALLOWED_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
+      if (allowed.length) {
+        const user = (await who.json().catch(() => null)) as { email?: string } | null
+        if (!user?.email || !allowed.includes(user.email.toLowerCase())) {
+          res.status(403).json({ error: 'AI workouts are not enabled for this account.' })
+          return
+        }
+      }
     } catch {
       res.status(401).json({ error: 'Could not verify session.' })
       return
@@ -181,6 +200,23 @@ export default async function handler(req: any, res: any) {
 
   try {
     const body: ReqBody = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
+
+    // Bound the prompt size: everything here is client-supplied.
+    if (
+      !body ||
+      !Array.isArray(body.movements) ||
+      body.movements.length > MAX_MOVEMENTS ||
+      (body.weekDays?.length ?? 0) > MAX_WEEK_DAYS ||
+      JSON.stringify(body).length > MAX_BODY_CHARS
+    ) {
+      res.status(400).json({ error: 'Request too large or malformed.' })
+      return
+    }
+    const clip = (t: string | undefined, n: number) => (t ? t.slice(0, n) : t)
+    body.conditions = clip(body.conditions, MAX_PROFILE_FIELD)
+    body.medications = clip(body.medications, MAX_PROFILE_FIELD)
+    body.careNotes = clip(body.careNotes, MAX_PROFILE_FIELD)
+    body.recentActuals = clip(body.recentActuals, MAX_ACTUALS)
 
     const bg: string[] = []
     if (body.conditions) bg.push(`Conditions: ${body.conditions}`)
@@ -196,7 +232,7 @@ export default async function handler(req: any, res: any) {
 Phase: ${body.phaseName} — ${body.phaseTagline}
 Target effort: RPE ${body.rpeLow}–${body.rpeHigh}. Talk test: ${body.talkTest}
 Upper-body/chest loading allowed: ${body.allowsSternalLoad ? 'yes' : 'NO — keep all load off the arms/chest'}${body.allowsSternalLoad && body.weeksSinceSternalLift != null ? ` (sternal precautions lifted ${body.weeksSinceSternalLift} week${body.weeksSinceSternalLift === 1 ? '' : 's'} ago — see UPPER-BODY RAMP-IN if under 4)` : ''}
-Loadable equipment he owns (use these weights for loadLb): ${Object.keys(body.loads).length ? Object.entries(body.loads).map(([k, v]) => `${k}: ${v.join('/')} lb`).join('; ') : 'none'}
+Loadable equipment they own (use these weights for loadLb): ${Object.keys(body.loads).length ? Object.entries(body.loads).map(([k, v]) => `${k}: ${v.join('/')} lb`).join('; ') : 'none'}
 ${body.underusedEquipment?.length ? `Owned but not used in recent programming (see EQUIPMENT ROTATION): ${body.underusedEquipment.join(', ')}\n` : ''}${body.recentActuals ? `Recent training log (prescribed vs how it landed — see PROGRESSION):\n${body.recentActuals}\n` : ''}Recent session titles (make new days feel different): ${body.recentTitles.length ? body.recentTitles.join('; ') : 'none yet'}`
 
     const movementList = `Movements you may use (use the exact id):

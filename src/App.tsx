@@ -77,8 +77,9 @@ export function App() {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
+              aria-current={tab === t.id ? 'page' : undefined}
               className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-semibold transition ${
-                tab === t.id ? 'text-brand-700' : 'text-slate-400'
+                tab === t.id ? 'text-brand-700' : 'text-slate-500'
               }`}
             >
               <span className={`text-2xl ${tab === t.id ? '' : 'grayscale'}`} aria-hidden>

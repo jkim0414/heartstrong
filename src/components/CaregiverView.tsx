@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getPatientState } from '../lib/care'
 import { computeStats, type Stats } from '../state/store'
 import { determinePhase } from '../engine/phase'
-import { generateWorkout } from '../engine/generator'
+import { planFor } from '../engine/plan'
 import { PHASES } from '../data/phases'
 import { todayISO, formatLong, parseISODate, toISODate, addDays } from '../lib/date'
-import type { AppState, DayStatus, ISODate, LogEntry, Workout } from '../types'
+import type { AppState, DayStatus, ISODate, LogEntry } from '../types'
 import { Card } from './ui'
 import { WorkoutView } from './WorkoutView'
 
@@ -19,13 +19,23 @@ const FLAG_LABELS: Record<string, string> = {
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
-function workoutForDay(state: AppState, date: ISODate): { workout: Workout; isAi: boolean } {
-  const ov = state.overrides[date]
-  const force = ov === 'rest' ? 'rest' : ov === 'easier' ? 'recovery_mobility' : undefined
-  const pr = determinePhase(state.profile, date)
-  const det = generateWorkout(date, pr.phase, state.profile, state.equipment, force)
-  const cached = state.aiCache[date] && !ov
-  return { workout: cached ? state.aiCache[date] : det, isAi: !!cached }
+const LOAD_FEEL: Record<NonNullable<LogEntry['loadFeel']>, string> = { light: 'too light', right: 'about right', heavy: 'too heavy' }
+
+/** Extra logged detail (weights feel, score) as one line, or null. */
+function extrasLine(e: LogEntry): string | null {
+  const parts = [e.loadFeel ? `weights felt ${LOAD_FEEL[e.loadFeel]}` : '', e.score ? `score ${e.score}` : ''].filter(Boolean)
+  return parts.length ? parts.join(' · ') : null
+}
+
+/** Symptom report for a day: everything flagged, and whether a later re-check passed. */
+function SymptomNote({ r }: { r: { ok: boolean; flagged: string[] } | undefined }) {
+  if (!r || r.flagged.length === 0) return null
+  return (
+    <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-900 ring-1 ring-rose-200">
+      ⚠ Reported before exercising: {r.flagged.map((id) => FLAG_LABELS[id] ?? id).join(', ')}
+      {r.ok ? ' — then re-checked as OK and continued.' : ''}
+    </p>
+  )
 }
 
 type Tab = 'today' | 'progress' | 'setup'
@@ -41,10 +51,19 @@ export function CaregiverView({ patientId, label, onClose }: { patientId: string
 
   useEffect(() => {
     let cancelled = false
-    getPatientState(patientId)
-      .then((s) => { if (cancelled) return; if (!s) setError(true); else setState(s); setLoading(false) })
-      .catch(() => { if (!cancelled) { setError(true); setLoading(false) } })
-    return () => { cancelled = true }
+    const load = (initial: boolean) =>
+      getPatientState(patientId)
+        .then((s) => {
+          if (cancelled) return
+          if (s) { setState(s); setError(false) } else if (initial) setError(true)
+          setLoading(false)
+        })
+        .catch(() => { if (!cancelled && initial) { setError(true); setLoading(false) } })
+    void load(true)
+    // Refresh when you come back to the app, so a view left open isn't stale.
+    const onWake = () => { if (document.visibilityState === 'visible') void load(false) }
+    document.addEventListener('visibilitychange', onWake)
+    return () => { cancelled = true; document.removeEventListener('visibilitychange', onWake) }
   }, [patientId])
 
   const derived = useMemo(() => {
@@ -56,7 +75,7 @@ export function CaregiverView({ patientId, label, onClose }: { patientId: string
     const rpes = completed.map((e) => e.feltRpe).filter((r): r is number => typeof r === 'number')
     const avgRpe = rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : null
     const notes = entries.filter((e) => e.notes)
-    const flagged = Object.entries(state.readiness).filter(([, r]) => !r.ok && r.flagged.length)
+    const flagged = Object.entries(state.readiness).filter(([, r]) => r.flagged.length > 0)
       .map(([date, r]) => ({ date, flagged: r.flagged })).sort((a, b) => (a.date < b.date ? 1 : -1))
     const weekStart = (d: ISODate) => addDays(d, -parseISODate(d).getDay())
     const thisWeekStart = weekStart(today)
@@ -85,7 +104,7 @@ export function CaregiverView({ patientId, label, onClose }: { patientId: string
         <div className="flex items-center justify-between px-4 py-3">
           <button onClick={onClose} className="flex items-center gap-1 text-base font-semibold text-brand-700">‹ Back</button>
           <div className="text-center">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Viewing</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Viewing</p>
             <p className="text-base font-bold text-slate-900">{label}</p>
           </div>
           <span className="w-12" />
@@ -140,11 +159,11 @@ export function CaregiverView({ patientId, label, onClose }: { patientId: string
                     {derived.weeks.map((w, i) => (
                       <div key={i} className="flex flex-1 flex-col items-center justify-end gap-1">
                         <div className="w-full rounded-t bg-emerald-400" style={{ height: `${Math.min(w.n, 6) * 10 + (w.n ? 4 : 0)}px` }} title={`${w.n} workouts`} />
-                        <span className="text-[10px] text-slate-400">{i === 7 ? 'now' : `-${7 - i}`}</span>
+                        <span className="text-xs text-slate-500">{i === 7 ? 'now' : `-${7 - i}`}</span>
                       </div>
                     ))}
                   </div>
-                  <p className="mt-1 text-xs text-slate-400">Completed workouts per week (last 8 weeks).</p>
+                  <p className="mt-1 text-xs text-slate-500">Completed workouts per week (last 8 weeks).</p>
                 </Card>
 
                 <Card className="p-4">
@@ -154,7 +173,7 @@ export function CaregiverView({ patientId, label, onClose }: { patientId: string
                     <button onClick={() => setCursor((c) => { const m = c.month + 1; return { year: c.year + Math.floor(m / 12), month: ((m % 12) + 12) % 12 } })} className="rounded-lg px-3 py-2 text-xl text-slate-500 hover:bg-slate-100">›</button>
                   </div>
                   <div className="mt-2 grid grid-cols-7 gap-1 text-center">
-                    {DOW.map((d, i) => <div key={i} className="py-1 text-xs font-bold text-slate-400">{d}</div>)}
+                    {DOW.map((d, i) => <div key={i} className="py-1 text-xs font-bold text-slate-500">{d}</div>)}
                     {cells.map((iso, i) => {
                       if (!iso) return <div key={i} />
                       const entry = state.log[iso]
@@ -169,7 +188,7 @@ export function CaregiverView({ patientId, label, onClose }: { patientId: string
                       )
                     })}
                   </div>
-                  <p className="mt-2 text-center text-xs text-slate-400">Tap any day to see what they did.</p>
+                  <p className="mt-2 text-center text-xs text-slate-500">Tap any day to see what they did.</p>
                 </Card>
 
                 {selected && <DayDetail state={state} date={selected} onClose={() => setSelected(null)} />}
@@ -199,7 +218,7 @@ export function CaregiverView({ patientId, label, onClose }: { patientId: string
 }
 
 function TodayTab({ state, today, phaseName, phaseTone }: { state: AppState; today: ISODate; phaseName: string; phaseTone: string }) {
-  const { workout, isAi } = workoutForDay(state, today)
+  const { workout, isAi } = planFor(state, today, today)
   const entry = state.log[today]
   const readiness = state.readiness[today]
   // Their plan is AI-generated weekly; if today's isn't synced yet (e.g. they
@@ -234,20 +253,21 @@ function TodayTab({ state, today, phaseName, phaseTone }: { state: AppState; tod
         </div>
         <div className="p-4">
           {entry?.status === 'completed' ? (
-            <p className="text-base font-semibold text-emerald-700">✅ Marked complete{entry.feltRpe != null ? ` · rated ${entry.feltRpe}/10` : ''}{entry.notes ? ` · “${entry.notes}”` : ''}</p>
+            <>
+              <p className="text-base font-semibold text-emerald-700">✅ Marked complete{entry.feltRpe != null ? ` · rated ${entry.feltRpe}/10` : ''}{entry.notes ? ` · “${entry.notes}”` : ''}</p>
+              {extrasLine(entry) && <p className="mt-0.5 text-sm text-slate-600">{extrasLine(entry)}</p>}
+            </>
           ) : entry?.status === 'rest' ? (
             <p className="text-base font-semibold text-sky-700">😴 Logged as a rest day</p>
           ) : (
             <p className="text-base font-semibold text-slate-500">Not logged yet today.</p>
           )}
-          {readiness && !readiness.ok && readiness.flagged.length > 0 && (
-            <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-900 ring-1 ring-rose-200">⚠ Reported before exercising: {readiness.flagged.map((id) => FLAG_LABELS[id] ?? id).join(', ')}</p>
-          )}
+          <SymptomNote r={readiness} />
         </div>
       </Card>
 
       <WorkoutView workout={workout} />
-      <p className="px-1 text-center text-xs text-slate-400">Read-only — you’re viewing their plan, not changing it.</p>
+      <p className="px-1 text-center text-xs text-slate-500">Read-only — you’re viewing their plan, not changing it.</p>
     </div>
   )
 }
@@ -294,7 +314,7 @@ function SetupTab({ state, weeksPostOp, phaseName, overridden }: { state: AppSta
         )}
       </Section>
 
-      <p className="px-1 text-center text-xs text-slate-400">Read-only — this reflects their current settings.</p>
+      <p className="px-1 text-center text-xs text-slate-500">Read-only — this reflects their current settings.</p>
     </div>
   )
 }
@@ -311,7 +331,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function Stacked({ label, text }: { label: string; text: string }) {
   return (
     <div className="px-4 py-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
       <p className="mt-1 whitespace-pre-wrap text-base text-slate-800">{text}</p>
     </div>
   )
@@ -329,29 +349,28 @@ function Row({ label, value, good, warn }: { label: string; value: string; good?
 function DayDetail({ state, date, onClose }: { state: AppState; date: ISODate; onClose: () => void }) {
   const entry: LogEntry | undefined = state.log[date]
   const readiness = state.readiness[date]
-  const { workout } = workoutForDay(state, date)
+  const { workout } = planFor(state, date, todayISO())
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, [date])
   return (
     <Card ref={ref} className="scroll-mt-4 space-y-3 p-5 ring-2 ring-brand-200">
       <div className="flex items-center justify-between">
         <p className="text-lg font-bold text-slate-900">{formatLong(date)}</p>
-        <button onClick={onClose} className="text-sm font-semibold text-slate-400">Close</button>
+        <button onClick={onClose} className="text-sm font-semibold text-slate-500">Close</button>
       </div>
       {entry ? (
         <div>
           <p className="text-base font-semibold text-slate-800">{STATUS_LABEL[entry.status]}{entry.workoutTitle ? ` · ${entry.workoutTitle}` : ''}</p>
           {entry.feltRpe != null && <p className="text-sm text-slate-600">Rated {entry.feltRpe}/10 effort</p>}
+          {extrasLine(entry) && <p className="text-sm text-slate-600">{extrasLine(entry)}</p>}
           {entry.notes && <p className="mt-1 text-base italic text-slate-700">“{entry.notes}”</p>}
         </div>
       ) : (
         <p className="text-base text-slate-500">Not logged.</p>
       )}
-      {readiness && !readiness.ok && readiness.flagged.length > 0 && (
-        <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-900 ring-1 ring-rose-200">⚠ Reported before exercising: {readiness.flagged.map((id) => FLAG_LABELS[id] ?? id).join(', ')}</div>
-      )}
+      <SymptomNote r={readiness} />
       <div>
-        <p className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-400">{entry?.status === 'completed' ? 'What the plan was' : 'The plan for this day'}</p>
+        <p className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">{entry?.status === 'completed' ? 'What the plan was' : 'The plan for this day'}</p>
         <WorkoutView workout={workout} />
       </div>
     </Card>

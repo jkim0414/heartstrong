@@ -60,7 +60,7 @@ export function History() {
 
         <div className="mt-3 grid grid-cols-7 gap-1 text-center">
           {DOW.map((d, i) => (
-            <div key={i} className="py-1 text-xs font-bold text-slate-400">
+            <div key={i} className="py-1 text-xs font-bold text-slate-500">
               {d}
             </div>
           ))}
@@ -101,16 +101,16 @@ export function History() {
 }
 
 function DayDetail({ date, onClose }: { date: string; onClose: () => void }) {
-  const { state, workoutFor, setDayStatus, clearDay } = useStore()
+  const { state, planFor, setDayStatus, clearDay } = useStore()
   const entry = state.log[date]
-  const workout = workoutFor(date)
+  const { workout } = planFor(date)
   const isPastOrToday = date <= todayISO()
 
   return (
     <Card className="space-y-3 p-5">
       <div className="flex items-center justify-between">
         <p className="text-lg font-bold text-slate-900">{formatLong(date)}</p>
-        <button onClick={onClose} className="text-sm text-slate-400">
+        <button onClick={onClose} className="px-2 py-1 text-base font-semibold text-slate-500">
           Close
         </button>
       </div>
@@ -122,6 +122,12 @@ function DayDetail({ date, onClose }: { date: string; onClose: () => void }) {
             {entry.workoutTitle ? ` · ${entry.workoutTitle}` : ''}
           </p>
           {entry.feltRpe != null && <p className="text-sm text-slate-600">Felt like {entry.feltRpe}/10 effort</p>}
+          {entry.loadFeel && (
+            <p className="text-sm text-slate-600">
+              Weights felt {entry.loadFeel === 'light' ? 'too light' : entry.loadFeel === 'heavy' ? 'too heavy' : 'about right'}
+            </p>
+          )}
+          {entry.score && <p className="text-sm text-slate-600">Score: {entry.score}</p>}
           {entry.notes && <p className="text-base italic text-slate-700">“{entry.notes}”</p>}
           <Button variant="ghost" className="!px-2 !text-sm" onClick={() => clearDay(date)}>
             Clear this day

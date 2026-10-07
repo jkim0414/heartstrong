@@ -57,13 +57,13 @@ export function Equipment() {
                     checked={item.owned}
                     onChange={(v) => !item.fixed && setItem(item.id, { owned: v })}
                     label={item.label}
-                    description={item.fixed ? 'Always available' : item.custom ? 'Custom (used by AI workouts)' : undefined}
+                    description={item.fixed ? 'Always available' : item.custom ? 'Custom — saved to your list' : undefined}
                   />
                 </div>
                 {!item.fixed && (
                   <button
                     onClick={() => removeItem(item.id)}
-                    className="shrink-0 rounded-xl px-3 text-slate-400 ring-1 ring-slate-200 hover:bg-rose-50 hover:text-rose-500"
+                    className="shrink-0 rounded-xl px-3 text-slate-500 ring-1 ring-slate-200 hover:bg-rose-50 hover:text-rose-500"
                     aria-label={`Remove ${item.label}`}
                   >
                     ✕
@@ -101,7 +101,10 @@ export function Equipment() {
 
       <SectionTitle>Add your own</SectionTitle>
       <Card className="p-4">
-        <p className="text-sm text-slate-600">Got something not listed? Add it and the AI workouts will use it.</p>
+        <p className="text-sm text-slate-600">
+          Got something not listed? Add it to keep your list complete. Workouts are built from a library of
+          safety-checked movements, so custom items won’t show up in workouts yet.
+        </p>
         <div className="mt-3 flex gap-2">
           <input
             value={customName}
@@ -151,12 +154,12 @@ function WeightEditor({ item, onChange }: { item: EquipmentItem; onChange: (weig
         {weights.map((w) => (
           <span key={w} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">
             {w} lb
-            <button onClick={() => onChange(weights.filter((x) => x !== w))} className="text-slate-400 hover:text-rose-500" aria-label={`Remove ${w} lb`}>
+            <button onClick={() => onChange(weights.filter((x) => x !== w))} className="text-slate-500 hover:text-rose-500" aria-label={`Remove ${w} lb`}>
               ✕
             </button>
           </span>
         ))}
-        {weights.length === 0 && <span className="text-sm text-slate-400">None added yet</span>}
+        {weights.length === 0 && <span className="text-sm text-slate-500">None added yet</span>}
       </div>
       <div className="mt-3 flex gap-2">
         <input

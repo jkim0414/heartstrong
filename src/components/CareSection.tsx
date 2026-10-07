@@ -18,6 +18,15 @@ export function ShareMyProgress() {
   const { state } = useStore()
   const [shares, setShares] = useState<ShareLink[]>([])
   const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
+  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null)
+
+  const copy = (s: ShareLink) => {
+    void navigator.clipboard?.writeText(s.code).then(() => {
+      setCopied(s.id)
+      setTimeout(() => setCopied((c) => (c === s.id ? null : c)), 2000)
+    })
+  }
 
   const refresh = () => listShares().then(setShares).catch(() => {})
   useEffect(() => {
@@ -45,19 +54,34 @@ export function ShareMyProgress() {
         {shares.length > 0 && (
           <div className="space-y-2">
             {shares.map((s) => (
-              <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
+              <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
                 <div>
                   <span className="font-mono text-lg font-bold tracking-widest text-slate-900">{s.code}</span>
                   <span className="ml-2 text-sm text-slate-500">{s.caregiver_id ? 'in use' : 'not used yet'}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => navigator.clipboard?.writeText(s.code)} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-brand-700 ring-1 ring-brand-200">
-                    Copy
-                  </button>
-                  <button onClick={() => revokeShare(s.id).then(refresh)} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-rose-600 ring-1 ring-rose-200">
-                    Revoke
-                  </button>
-                </div>
+                {confirmRevoke === s.id ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-600">{s.caregiver_id ? 'Stop sharing?' : 'Delete code?'}</span>
+                    <button
+                      onClick={() => revokeShare(s.id).then(() => { setConfirmRevoke(null); refresh() })}
+                      className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white"
+                    >
+                      Yes
+                    </button>
+                    <button onClick={() => setConfirmRevoke(null)} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 ring-1 ring-slate-200">
+                      No
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => copy(s)} className="rounded-lg px-3 py-2 text-sm font-semibold text-brand-700 ring-1 ring-brand-200">
+                      {copied === s.id ? 'Copied ✓' : 'Copy'}
+                    </button>
+                    <button onClick={() => setConfirmRevoke(s.id)} className="rounded-lg px-3 py-2 text-sm font-semibold text-rose-600 ring-1 ring-rose-200">
+                      Revoke
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -110,7 +134,7 @@ export function FollowPeople({ heading = true }: { heading?: boolean }) {
                   <span className="text-base font-semibold text-slate-900">{f.patient_label ?? 'Their progress'}</span>
                   <span className="ml-2 text-sm font-medium text-brand-700">View →</span>
                 </button>
-                <button onClick={() => unfollow(f.id).then(refresh)} className="text-sm font-semibold text-slate-400 hover:text-rose-500">
+                <button onClick={() => unfollow(f.id).then(refresh)} className="text-sm font-semibold text-slate-500 hover:text-rose-500">
                   Unfollow
                 </button>
               </div>

@@ -62,7 +62,7 @@ export function SignIn() {
 
           {import.meta.env.VITE_ENABLE_GOOGLE === 'true' && (
             <>
-              <div className="flex items-center gap-3 text-sm text-slate-400">
+              <div className="flex items-center gap-3 text-sm text-slate-500">
                 <span className="h-px flex-1 bg-slate-200" /> or <span className="h-px flex-1 bg-slate-200" />
               </div>
               <Button variant="secondary" full onClick={() => signInWithGoogle()}>
@@ -76,7 +76,7 @@ export function SignIn() {
       <p className="mt-4 px-2 text-center text-sm text-slate-500">
         New here? You’ll choose whether you’re here for your own recovery or to support someone right after you sign in.
       </p>
-      <p className="mt-3 px-2 text-center text-xs leading-relaxed text-slate-400">
+      <p className="mt-3 px-2 text-center text-xs leading-relaxed text-slate-500">
         Your information is private to your account and synced securely so you can use HeartStrong on any device. We
         only use your email to sign you in.
       </p>

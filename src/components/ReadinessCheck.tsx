@@ -35,6 +35,16 @@ export function ReadinessCheck({ date, onPass }: { date: string; onPass: () => v
       <Card className="border-l-4 border-amber-500 bg-amber-50 p-5">
         <p className="text-lg font-bold text-amber-900">Let’s rest today</p>
         <p className="mt-2 text-base text-amber-900">{READINESS_FAIL_MESSAGE}</p>
+        {flagged.includes('chest') && (
+          <div className="mt-3 rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200">
+            <p className="text-base font-semibold text-rose-900">
+              If chest pain or pressure doesn’t ease within a few minutes of rest, call 911.
+            </p>
+            <a href="tel:911" className="mt-2 inline-block text-base font-bold text-rose-700 underline">
+              Call 911
+            </a>
+          </div>
+        )}
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <Button
             variant="success"

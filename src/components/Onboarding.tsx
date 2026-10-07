@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStore } from '../state/store'
 import { Button, Card, Toggle } from './ui'
 import { MEDICAL_DISCLAIMER } from '../data/safety'
+import { isAuthConfigured } from '../lib/supabase'
 
 type Role = 'patient' | 'caregiver'
 
@@ -39,7 +40,8 @@ export function Onboarding() {
               </span>
             </span>
           </button>
-          <button
+          {/* Following someone needs accounts (a backend); hide it in local-only mode. */}
+          {isAuthConfigured && <button
             onClick={() => setRole('caregiver')}
             className="flex w-full items-start gap-4 rounded-2xl bg-white p-5 text-left shadow-sm ring-1 ring-slate-200 hover:ring-brand-400"
           >
@@ -50,7 +52,7 @@ export function Onboarding() {
                 Follow someone’s progress with a share code. No workout plan — just their streak, workouts, and notes.
               </span>
             </span>
-          </button>
+          </button>}
         </div>
       </div>
     )

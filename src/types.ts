@@ -194,7 +194,11 @@ export interface AppState {
   overrides: Record<ISODate, 'easier' | 'rest'>
   /** Validated AI-generated workouts, cached per day (stable + works offline). */
   aiCache: Record<ISODate, Workout>
-  /** Readiness checks the user answered, keyed by date. */
+  /**
+   * Readiness checks, keyed by date. `ok` is the latest check's result;
+   * `flagged` accumulates every symptom reported that day, so a passing
+   * re-check never erases an earlier report.
+   */
   readiness: Record<ISODate, { ok: boolean; flagged: string[] }>
   schemaVersion: number
 }

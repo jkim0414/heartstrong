@@ -8,11 +8,11 @@ function GlossaryTerm({ label, definition }: { label: string; definition: string
 
   useEffect(() => {
     if (!open) return
-    const onDoc = (e: MouseEvent) => {
+    const onDoc = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
+    document.addEventListener('pointerdown', onDoc)
+    return () => document.removeEventListener('pointerdown', onDoc)
   }, [open])
 
   return (
@@ -20,8 +20,10 @@ function GlossaryTerm({ label, definition }: { label: string; definition: string
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
+        // Hover only for real mice: on touch screens a tap emits an emulated
+        // hover AND a click, which opened then immediately re-closed the tip.
+        onPointerEnter={(e) => e.pointerType === 'mouse' && setOpen(true)}
+        onPointerLeave={(e) => e.pointerType === 'mouse' && setOpen(false)}
         aria-label={`What is ${label}? ${definition}`}
         className="cursor-help font-semibold text-inherit underline decoration-dotted decoration-2 underline-offset-2"
       >

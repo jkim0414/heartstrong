@@ -11,24 +11,47 @@ export function Settings() {
   const auth = useAuth()
   const p = state.profile
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmCaregiver, setConfirmCaregiver] = useState(false)
   const [imported, setImported] = useState(false)
+  const signedIn = auth.configured && auth.status === 'signedIn'
 
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-extrabold text-slate-900">Settings</h1>
 
-      <SectionTitle>How you use HeartStrong</SectionTitle>
-      <Card className="space-y-3 p-5">
-        <p className="text-sm text-slate-600">
-          You’re set up for <span className="font-semibold">your own workouts</span>. If you’re really here to support
-          someone else, switch to caregiver mode — it swaps the workout plan for a view of the people you follow.
-        </p>
-        <Button variant="secondary" className="!text-sm" onClick={() => updateProfile({ role: 'caregiver' })}>
-          Switch to caregiver mode
-        </Button>
-      </Card>
+      {/* Caregiver mode needs accounts to follow anyone; hide it in local-only mode. */}
+      {auth.configured && (
+        <>
+        <SectionTitle>How you use HeartStrong</SectionTitle>
+        <Card className="space-y-3 p-5">
+          <p className="text-sm text-slate-600">
+            You’re set up for <span className="font-semibold">your own workouts</span>. If you’re really here to support
+            someone else, switch to caregiver mode — it swaps the workout plan for a view of the people you follow.
+          </p>
+          {!confirmCaregiver ? (
+            <Button variant="secondary" className="!text-sm" onClick={() => setConfirmCaregiver(true)}>
+              Switch to caregiver mode
+            </Button>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-800">
+                This hides your workout plan. Your history is kept, and you can switch back anytime.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="secondary" className="!text-sm" onClick={() => updateProfile({ role: 'caregiver' })}>
+                  Yes, switch
+                </Button>
+                <Button variant="ghost" className="!text-sm" onClick={() => setConfirmCaregiver(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+        </>
+      )}
 
-      {auth.configured && auth.status === 'signedIn' && (
+      {signedIn && (
         <>
           <SectionTitle>Account</SectionTitle>
           <Card className="space-y-3 p-5">
@@ -113,7 +136,7 @@ export function Settings() {
           checked={p.aiEnabled}
           onChange={(v) => updateProfile({ aiEnabled: v })}
           label="AI-generated workouts"
-          description="Fresh, constantly-varied sessions each day. Needs an internet connection; falls back to the built-in plan when offline. Every AI workout is safety-checked against your phase and precautions before it’s shown."
+          description="Constantly varied sessions, planned a week at a time and adjusted to how your recent workouts felt. Needs an internet connection; falls back to the built-in plan when it can’t connect. Every AI workout is safety-checked against your phase and precautions before it’s shown."
         />
       </div>
       {p.aiEnabled && (
@@ -122,6 +145,10 @@ export function Settings() {
             ✨ Tap <span className="font-semibold">“New variation”</span> on the Today screen anytime you want a
             different workout. The same safety rules always apply — chest-loading and high-intensity work stay locked to
             your current phase no matter what the AI suggests.
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            To plan your workouts, your phase, equipment, recent training, and health profile are sent to an AI service
+            (Anthropic’s Claude) — never your name or email.
           </p>
         </Card>
       )}
@@ -160,8 +187,9 @@ export function Settings() {
       <SectionTitle>Data</SectionTitle>
       <Card className="p-5">
         <p className="text-sm text-slate-600">
-          Everything is stored privately on this device only — nothing is sent anywhere. Clearing data removes your
-          history and starts fresh.
+          {signedIn
+            ? 'Your data is saved on this device and synced to your private account, so it’s on all your devices. Only you — and anyone you give a share code to — can see it. Clearing data erases it everywhere, including your account.'
+            : 'Your data is stored privately on this device. Clearing data removes your history and starts fresh.'}
         </p>
         {!confirmReset ? (
           <Button variant="secondary" className="mt-3 !text-rose-700 !ring-rose-200" onClick={() => setConfirmReset(true)}>
@@ -179,7 +207,7 @@ export function Settings() {
         )}
       </Card>
 
-      <p className="px-1 pb-2 text-center text-xs text-slate-400">HeartStrong · built with care ❤️</p>
+      <p className="px-1 pb-2 text-center text-xs text-slate-500">HeartStrong · built with care ❤️</p>
     </div>
   )
 }

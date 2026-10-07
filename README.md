@@ -40,7 +40,7 @@ It's wired to be **safe and key-safe**:
 
 - The model may **only choose from the safety-filtered movement list** the app sends it (already excludes chest-loading and out-of-phase movements). It controls structure/format/selection/dosing/titles — not medical cues, which always come from the vetted library.
 - **Every AI workout is re-validated in the browser** (`src/engine/validate.ts`) against the same hard rails: eligible movements only, loads clamped to what the user owns, RPE capped at the phase ceiling, warm-up + cool-down required. If anything fails → it silently **falls back to the deterministic engine**.
-- The same fallback covers **offline / network failure**, so the app always works.
+- The same fallback covers **network failure** — if the AI can't be reached, the built-in plan is shown instead.
 - The **API key lives only in the serverless function** (`/api/generate`) as an environment variable — it is never bundled into the client or sent to the user's device.
 
 **Setup:** deploy to Vercel (zero-config: it detects Vite + the `/api` function), then set `ANTHROPIC_API_KEY` in the project's Environment Variables. That's it. To test the function locally: `npm i -g vercel && vercel dev` with a `.env.local` (see `.env.example`).
@@ -58,7 +58,7 @@ Each person signs in (passwordless email link, or Google) and their workouts/his
 How privacy is handled:
 - Each user's entire app state is stored as one row in an `app_state` table, keyed to their account.
 - **Row-Level Security** (see `supabase/schema.sql`) means a signed-in user can only ever read/write their *own* row — no user can see another's health data, enforced at the database.
-- The `/api/generate` endpoint **requires a valid session** when Supabase is configured, so the public URL can't be used to spend your Anthropic credits.
+- The `/api/generate` endpoint **requires a valid session** when Supabase is configured, and caps request size. Because anyone can create an account, set **`ALLOWED_EMAILS`** (comma-separated) in the host's environment to restrict AI generation to specific accounts; everyone else quietly gets the built-in engine instead of spending your Anthropic credits.
 - If Supabase env vars are absent, the app runs in **local-only mode** (no sign-in, data stays in that browser) — handy for dev and static demos.
 
 **Setup (one time):**
@@ -70,7 +70,7 @@ How privacy is handled:
 
 **Migrating existing on-device data:** if you used the app before signing in, then after your first sign-in go to **Settings → Account → "Import data already on this device"** to pull that history into your account. (New accounts start fresh, so other people signing in on the same device don't inherit your data.)
 
-> Note on sync: it's last-write-wins per device, which is plenty for one person across a phone and laptop. Sign-out keeps the local cache on that device but hides it behind the next sign-in.
+> Note on sync: each device keeps a cached copy and syncs the whole state. A failed cloud read is never mistaken for a new account (the app shows a retry screen rather than starting fresh), edits made without signal are kept and uploaded later, and when two copies diverge the dated records (workouts, symptom reports, plans) are merged rather than overwritten. The app re-syncs whenever it returns to the foreground. Sign-out keeps the local cache on that device but hides it behind the next sign-in.
 
 ## Two modes: patient & caregiver
 
@@ -133,7 +133,7 @@ The simplest path — **deploy the `dist/` folder** to any static host (all free
 - **Netlify**: run `npm run build`, then drag the `dist` folder onto https://app.netlify.com/drop. You get a URL instantly.
 - **Vercel / Cloudflare Pages / GitHub Pages**: point at this repo; build command `npm run build`, output dir `dist`.
 
-Then on the phone, open the URL and **"Add to Home Screen"** (iOS Safari: Share → Add to Home Screen; Android Chrome: ⋮ → Add to Home Screen). It launches full-screen like a native app and works offline.
+Then on the phone, open the URL and **"Add to Home Screen"** (iOS Safari: Share → Add to Home Screen; Android Chrome: ⋮ → Add to Home Screen). It launches full-screen like a native app. (It needs a connection to load — there's no offline service worker.)
 
 Without the optional accounts backend (below), all data lives in the browser's local storage on that device — private, but not synced across devices. Enabling Supabase adds accounts + cross-device sync.
 
@@ -153,8 +153,9 @@ src/
   engine/      phase.ts (phase determination), generator.ts (offline workout engine + shared eligibility),
                llm.ts (calls /api/generate), validate.ts (re-validates AI output against the safety rails),
                normalize.ts (consistency guardrails: even reps for alternating moves, honest time
-               estimate, clean per-round circuit doses)
-  state/       store.tsx (state + cloud sync, streaks, milestones), auth.tsx (Supabase auth context)
+               estimate, clean per-round circuit doses), plan.ts (which plan applies to a day — shared by
+               every screen; rejects cached plans no longer valid for current equipment/precautions)
+  state/       store.tsx (state, streaks, milestones), sync.ts (pure cloud-sync decisions), auth.tsx (Supabase auth context)
   lib/         date.ts (date math + seeded RNG), supabase.ts (client; null in local-only mode), care.ts (caregiver sharing)
   components/  Today, WorkoutView, ReadinessCheck, History, Progress, Equipment, Settings, SafetySheet,
                Onboarding, SignIn, CaregiverApp, CaregiverView, CareSection, Glossarize, ui
@@ -162,6 +163,7 @@ tools/
   gen-check.ts       engine smoke test — verifies safety + consistency guardrails across all phases/weekdays
   validate-check.ts  validator test — proves unsafe AI output (sternal-load, unknown moves, over-cap RPE) is
                      rejected, sloppy math is normalized, and one bad day can't sink a weekly plan
+  sync-check.ts      cloud-sync test — a failed read never wipes history; offline edits and merges are kept
 ```
 
 To re-run the safety tests (bundle with esbuild + run with node):
@@ -169,6 +171,7 @@ To re-run the safety tests (bundle with esbuild + run with node):
 ```bash
 ./node_modules/.bin/esbuild tools/gen-check.ts --bundle --platform=node --format=esm --outfile=/tmp/gen-check.mjs && node /tmp/gen-check.mjs
 ./node_modules/.bin/esbuild tools/validate-check.ts --bundle --platform=node --format=esm --outfile=/tmp/validate-check.mjs && node /tmp/validate-check.mjs
+./node_modules/.bin/esbuild tools/sync-check.ts --bundle --platform=node --format=esm --outfile=/tmp/sync-check.mjs && node /tmp/sync-check.mjs
 ```
 
 ---

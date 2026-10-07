@@ -6,30 +6,38 @@ import { WorkoutView } from './WorkoutView'
 import { ReadinessCheck } from './ReadinessCheck'
 import { addDays, formatLong, weekday } from '../lib/date'
 import { determinePhase } from '../engine/phase'
+import { getEligibleMovements } from '../engine/generator'
+import { cachedPlanUsable } from '../engine/plan'
 import { MOVEMENTS_BY_ID } from '../data/movements'
 import { fetchAiWeek, fetchAiWorkout } from '../engine/llm'
 import { Glossarize } from './Glossarize'
 import { StreakCelebration } from './StreakCelebration'
 import type { ISODate } from '../types'
 
+// The weekly plan request (one call, often 30–60s). Module-level so it
+// survives the Today screen unmounting (switching tabs mid-generation used to
+// throw the result away and pay for it again) and so two mounts can't race.
+let weekRequest: Promise<void> | null = null
+let regenSalt = 0
+
 export function Today() {
-  const { today, workoutFor, phaseResult, state, stats, setDayStatus, clearDay, setOverride, updateProfile, setAiWorkout, setAiWorkouts, clearAiWorkout, recentTitles, recentPatternsFor } = useStore()
+  const { today, workoutFor, planFor, phaseResult, state, stats, setDayStatus, clearDay, setOverride, updateProfile, setAiWorkout, setAiWorkouts, recentTitles, recentPatternsFor } = useStore()
   const deterministic = workoutFor(today)
   const entry = state.log[today]
   const readiness = state.readiness[today]
   const override = state.overrides[today]
   const def = PHASES[phaseResult.phase]
 
-  const ai = state.aiCache[today]
-  // A cached AI workout is only valid if it was generated for the current phase
-  // — otherwise (e.g. after sternal precautions lift mid-day) it's stale.
-  const aiFresh = !!ai && ai.phase === phaseResult.phase
+  // A cached AI plan is used only if it's still valid under the current rules
+  // (same phase, every movement still eligible with today's equipment and
+  // precautions) — see engine/plan.ts.
+  const aiFresh = cachedPlanUsable(state.aiCache[today], today, state.profile, state.equipment)
   const aiEligible = state.profile.aiEnabled && !override && !deterministic.isRecovery
-  const workout = aiEligible && aiFresh ? ai : deterministic
-  const usingAi = aiEligible && aiFresh
+  const { workout, isAi: usingAi } = planFor(today)
 
-  const [salt, setSalt] = useState(0)
-  const [aiLoading, setAiLoading] = useState(false)
+  const [aiLoading, setAiLoading] = useState(() => weekRequest != null)
+  const [regenerating, setRegenerating] = useState(false)
+  const [regenFailed, setRegenFailed] = useState(false)
   const [showWhy, setShowWhy] = useState(false)
   const [completing, setCompleting] = useState(false)
   const [revealed, setRevealed] = useState(false)
@@ -49,7 +57,7 @@ export function Today() {
     const out: ISODate[] = []
     for (let d = today; d <= horizon; d = addDays(d, 1)) {
       if (determinePhase(state.profile, d).phase !== phaseResult.phase) continue
-      if (state.aiCache[d]?.phase === phaseResult.phase) continue
+      if (cachedPlanUsable(state.aiCache[d], d, state.profile, state.equipment)) continue
       if (state.overrides[d]) continue
       if (workoutFor(d).isRecovery) continue
       out.push(d)
@@ -69,7 +77,7 @@ export function Today() {
       else if (e?.status === 'rest') rest++
       else if (!workoutFor(d).isRecovery) missed++
     }
-    return `over the last 7 days he completed ${done}, logged ${rest} rest, missed ${missed}.`
+    return `over the last 7 days they completed ${done}, logged ${rest} rest, missed ${missed}.`
   }
 
   // Recent training actuals — what was prescribed vs how it landed — so the
@@ -103,7 +111,11 @@ export function Today() {
 
   // Owned equipment that recent programming hasn't touched — surface it to the
   // planner so the movement pool doesn't quietly narrow (e.g. a new rower).
+  // Only gear with at least one movement eligible right now: listing custom
+  // gear (no movements in the library) or phase-locked gear would push the
+  // planner toward movements it can't legally produce.
   const underusedEquipment = (): string[] => {
+    const usable = new Set(getEligibleMovements(phaseResult.phase, state.profile, state.equipment).flatMap((m) => m.requires))
     const used = new Set<string>()
     for (let i = 0; i <= 14; i++) {
       const ai = state.aiCache[addDays(today, -i)]
@@ -114,45 +126,51 @@ export function Today() {
       }
     }
     return state.equipment
-      .filter((e) => e.owned && e.id !== 'bodyweight' && e.id !== 'openspace' && !used.has(e.id))
+      .filter((e) => e.owned && usable.has(e.id) && e.id !== 'bodyweight' && e.id !== 'openspace' && !used.has(e.id))
       .map((e) => e.label)
   }
 
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-    let cancelled = false
-    if (salt > 0) {
-      // "New variation" re-rolls just today within the weekly plan.
-      if (!aiEligible || aiFresh) return
-      setAiLoading(true)
-      fetchAiWorkout(today, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(today), salt).then((w) => {
-        if (cancelled) return
-        if (w) setAiWorkout(today, w)
-        setAiLoading(false)
-      })
-    } else {
+    let mounted = true
+    if (!weekRequest) {
       const needed = neededAiDates()
       if (needed.length === 0) return
+      // Only show a spinner when TODAY is waiting; later days fill in quietly.
       if (needed[0] === today) setAiLoading(true)
-      fetchAiWeek(needed, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(needed[0]), {
+      weekRequest = fetchAiWeek(needed, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(needed[0]), {
         adherence: adherenceSummary(),
         recentActuals: recentActuals(),
         underusedEquipment: underusedEquipment(),
-      }).then((w) => {
-        if (cancelled) return
-        if (w) setAiWorkouts(w)
-        setAiLoading(false)
       })
+        // Store writes are safe after unmount; stale-phase or now-ineligible
+        // days are filtered out at display time by cachedPlanUsable.
+        .then((w) => {
+          if (w) setAiWorkouts(w)
+        })
+        .finally(() => {
+          weekRequest = null
+        })
     }
+    weekRequest?.finally(() => {
+      if (mounted) setAiLoading(false)
+    })
     return () => {
-      cancelled = true
+      mounted = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiEligible, aiFresh, today, phaseResult.phase, salt])
+  }, [aiEligible, aiFresh, today, phaseResult.phase])
 
-  const regenerate = () => {
-    clearAiWorkout(today)
-    setSalt((s) => s + 1)
+  // "New variation": re-roll just today. The current workout stays on screen
+  // until a validated replacement arrives, so a failed request costs nothing.
+  const regenerate = async () => {
+    if (regenerating) return
+    setRegenerating(true)
+    setRegenFailed(false)
+    const w = await fetchAiWorkout(today, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(today), ++regenSalt)
+    if (w) setAiWorkout(today, w)
+    else setRegenFailed(true)
+    setRegenerating(false)
   }
 
   const showWorkout = revealed || !!readiness?.ok || !!entry || workout.isRecovery
@@ -249,7 +267,7 @@ export function Today() {
           <div className="space-y-2 border-t border-slate-100 px-4 py-3">
             <p className="text-sm text-slate-600">{phaseResult.reason}</p>
             {phaseResult.nudge && <p className="text-sm font-medium text-brand-800">💡 {phaseResult.nudge}</p>}
-            {phaseResult.weeksPostOp != null && <p className="text-xs text-slate-400">Week {phaseResult.weeksPostOp} post-op</p>}
+            {phaseResult.weeksPostOp != null && <p className="text-xs text-slate-500">Week {phaseResult.weeksPostOp} post-op</p>}
           </div>
         )}
       </Card>
@@ -259,6 +277,13 @@ export function Today() {
         <Card className="border-l-4 border-emerald-500 bg-emerald-50 p-4">
           <p className="text-base font-bold text-emerald-900">✅ Done for today — nice work!</p>
           {entry.feltRpe != null && <p className="mt-0.5 text-sm text-emerald-900">You rated it {entry.feltRpe}/10 effort.</p>}
+          {(entry.loadFeel || entry.score) && (
+            <p className="mt-0.5 text-sm text-emerald-900">
+              {entry.loadFeel ? `Weights: ${LOAD_FEEL_LABEL[entry.loadFeel].toLowerCase()}` : ''}
+              {entry.loadFeel && entry.score ? ' · ' : ''}
+              {entry.score ? `Score: ${entry.score}` : ''}
+            </p>
+          )}
           {entry.notes && <p className="mt-0.5 text-sm italic text-emerald-800">“{entry.notes}”</p>}
           <button className="mt-1 text-sm font-semibold text-emerald-800 underline" onClick={() => clearDay(today)}>Undo</button>
         </Card>
@@ -276,18 +301,25 @@ export function Today() {
 
       {/* Workout */}
       {showWorkout && !entry && (
-        aiLoading && !aiFresh && aiEligible ? (
+        (aiLoading && !aiFresh && aiEligible) || regenerating ? (
           <Card className="flex items-center gap-3 p-6">
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-brand-200 border-t-brand-700" />
-            <span className="text-base font-semibold text-slate-700">Creating a fresh workout for today…</span>
+            <span className="text-base font-semibold text-slate-700">
+              {regenerating ? 'Creating a new variation…' : 'Planning your week…'}
+            </span>
           </Card>
         ) : (
           <>
             {aiEligible && (
               <div className="flex items-center justify-between px-1">
-                <span className="text-xs font-medium text-slate-400">{usingAi ? '✨ AI-generated' : 'Built-in plan (offline)'}</span>
-                <button onClick={regenerate} className="text-sm font-semibold text-brand-700">↻ New variation</button>
+                <span className="text-sm font-medium text-slate-500">{usingAi ? '✨ AI-planned' : 'Built-in plan'}</span>
+                <button onClick={regenerate} className="py-1 text-base font-semibold text-brand-700">↻ New variation</button>
               </div>
+            )}
+            {regenFailed && (
+              <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+                Couldn’t get a new variation right now — keeping this one.
+              </p>
             )}
             <WorkoutView workout={workout} />
           </>
@@ -341,6 +373,8 @@ export function Today() {
   )
 }
 
+const LOAD_FEEL_LABEL = { light: 'Too light', right: 'About right', heavy: 'Too heavy' } as const
+
 function CompletePanel({
   hadLoads,
   hadMetcon,
@@ -361,40 +395,36 @@ function CompletePanel({
       <p className="text-lg font-bold text-slate-900">How did it go?</p>
       <div>
         <p className="text-sm font-semibold text-slate-700">How hard did it feel? (optional)</p>
-        <div className="mt-2 grid grid-cols-10 gap-1">
+        <div className="mt-2 grid grid-cols-5 gap-2">
           {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
             <button
               key={n}
               onClick={() => setRpe(n === rpe ? undefined : n)}
-              className={`rounded-lg py-2 text-sm font-bold ${rpe === n ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}
+              aria-pressed={rpe === n}
+              className={`rounded-lg py-3 text-lg font-bold ${rpe === n ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-700'}`}
             >
               {n}
             </button>
           ))}
         </div>
-        <p className="mt-1 text-xs text-slate-400">1 = very easy · 10 = maximal (you should rarely go above 7–8)</p>
+        <p className="mt-1.5 text-sm text-slate-500">1 = very easy · 10 = all-out (you should rarely go above 7–8)</p>
       </div>
       {hadLoads && (
         <div>
           <p className="text-sm font-semibold text-slate-700">How were the weights? (optional)</p>
           <div className="mt-2 grid grid-cols-3 gap-2">
-            {(
-              [
-                ['light', 'Too light'],
-                ['right', 'About right'],
-                ['heavy', 'Too heavy'],
-              ] as const
-            ).map(([id, label]) => (
+            {(['light', 'right', 'heavy'] as const).map((id) => (
               <button
                 key={id}
                 onClick={() => setLoadFeel(id === loadFeel ? undefined : id)}
-                className={`rounded-lg py-2.5 text-sm font-semibold ${loadFeel === id ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}
+                aria-pressed={loadFeel === id}
+                className={`rounded-lg py-3 text-base font-semibold ${loadFeel === id ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-700'}`}
               >
-                {label}
+                {LOAD_FEEL_LABEL[id]}
               </button>
             ))}
           </div>
-          <p className="mt-1 text-xs text-slate-400">This helps next week’s plan pick better weights.</p>
+          <p className="mt-1.5 text-sm text-slate-500">This helps next week’s plan pick better weights.</p>
         </div>
       )}
       {hadMetcon && (

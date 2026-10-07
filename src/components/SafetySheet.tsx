@@ -113,7 +113,7 @@ export function SafetySheet({ onClose, profile }: { onClose: () => void; profile
             </div>
           )}
 
-          <p className="px-1 pb-2 text-xs leading-relaxed text-slate-400">{MEDICAL_DISCLAIMER}</p>
+          <p className="px-1 pb-2 text-xs leading-relaxed text-slate-500">{MEDICAL_DISCLAIMER}</p>
         </div>
       </div>
     </div>
