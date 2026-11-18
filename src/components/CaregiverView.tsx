@@ -43,7 +43,8 @@ type Tab = 'today' | 'progress' | 'setup'
 export function CaregiverView({ patientId, label, onClose }: { patientId: string; label: string; onClose: () => void }) {
   const [state, setState] = useState<AppState | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
+  // 'gone' = reachable but nothing shared; 'network' = couldn't reach the server.
+  const [error, setError] = useState<false | 'gone' | 'network'>(false)
   const [tab, setTab] = useState<Tab>('today')
   const [selected, setSelected] = useState<ISODate | null>(null)
   const today = todayISO()
@@ -55,10 +56,10 @@ export function CaregiverView({ patientId, label, onClose }: { patientId: string
       getPatientState(patientId)
         .then((s) => {
           if (cancelled) return
-          if (s) { setState(s); setError(false) } else if (initial) setError(true)
+          if (s) { setState(s); setError(false) } else if (initial) setError('gone')
           setLoading(false)
         })
-        .catch(() => { if (!cancelled && initial) { setError(true); setLoading(false) } })
+        .catch(() => { if (!cancelled && initial) { setError('network'); setLoading(false) } })
     void load(true)
     // Refresh when you come back to the app, so a view left open isn't stale.
     const onWake = () => { if (document.visibilityState === 'visible') void load(false) }
@@ -69,7 +70,7 @@ export function CaregiverView({ patientId, label, onClose }: { patientId: string
   const derived = useMemo(() => {
     if (!state) return null
     const stats: Stats = computeStats(state, today)
-    const phase = determinePhase(state.profile, today)
+    const phase = determinePhase(state.profile, today, state.log)
     const entries = Object.values(state.log).sort((a, b) => (a.date < b.date ? 1 : -1))
     const completed = entries.filter((e) => e.status === 'completed')
     const rpes = completed.map((e) => e.feltRpe).filter((r): r is number => typeof r === 'number')
@@ -123,7 +124,15 @@ export function CaregiverView({ patientId, label, onClose }: { patientId: string
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {loading && <div className="flex items-center justify-center py-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-brand-200 border-t-brand-700" /></div>}
-        {!loading && error && <Card className="p-5"><p className="text-base text-slate-600">Couldn’t load their data. They may have just started or revoked sharing.</p></Card>}
+        {!loading && error && (
+          <Card className="p-5">
+            <p className="text-base text-slate-600">
+              {error === 'network'
+                ? 'Couldn’t reach HeartStrong to load their data. Check your connection and try again in a little while.'
+                : 'Couldn’t load their data. They may have just started or revoked sharing.'}
+            </p>
+          </Card>
+        )}
 
         {!loading && state && derived && (
           <div className="mx-auto max-w-2xl space-y-4">

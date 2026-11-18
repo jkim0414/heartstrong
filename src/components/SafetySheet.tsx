@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { STOP_SIGNS, STOP_ACTION, RPE_SCALE, RPE_EXPLAINER, MED_REMINDERS, MEDICAL_DISCLAIMER } from '../data/safety'
 import type { Profile } from '../types'
 import { Button } from './ui'
@@ -7,9 +7,30 @@ import { Button } from './ui'
 export function SafetySheet({ onClose, profile }: { onClose: () => void; profile: Profile }) {
   const hasHealthProfile = !!(profile.conditions || profile.medications || profile.careNotes)
   const [tab, setTab] = useState<'stop' | 'effort' | 'reminders'>('stop')
+
+  // Behave like a real dialog: Escape closes it, and the page behind doesn't scroll.
+  const close = useRef(onClose)
+  close.current = onClose
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close.current()
+    document.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [])
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/40 backdrop-blur-sm">
-      <div className="mt-auto flex max-h-[92vh] flex-col rounded-t-3xl bg-slate-50 shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-slate-900/40 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Safety"
+      onClick={onClose}
+    >
+      <div className="mt-auto flex max-h-[92vh] flex-col rounded-t-3xl bg-slate-50 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <h2 className="text-xl font-bold text-slate-900">Safety</h2>
           <button onClick={onClose} className="rounded-full bg-slate-200 px-4 py-2 text-base font-semibold text-slate-700">

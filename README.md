@@ -39,7 +39,7 @@ For the CrossFit "constantly varied, never the same" feel, the app generates tra
 It's wired to be **safe and key-safe**:
 
 - The model may **only choose from the safety-filtered movement list** the app sends it (already excludes chest-loading and out-of-phase movements). It controls structure/format/selection/dosing/titles — not medical cues, which always come from the vetted library.
-- **Every AI workout is re-validated in the browser** (`src/engine/validate.ts`) against the same hard rails: eligible movements only, loads clamped to what the user owns, RPE capped at the phase ceiling, warm-up + cool-down required. If anything fails → it silently **falls back to the deterministic engine**.
+- **Every AI workout is re-validated in the browser** (`src/engine/validate.ts`) against the same hard rails: eligible movements only, loads snapped to weights the user owns *and* held to a phase-appropriate ceiling, RPE capped at the phase ceiling, warm-up + cool-down required. If anything fails → it silently **falls back to the deterministic engine**.
 - The same fallback covers **network failure** — if the AI can't be reached, the built-in plan is shown instead.
 - The **API key lives only in the serverless function** (`/api/generate`) as an environment variable — it is never bundled into the client or sent to the user's device.
 
@@ -60,6 +60,9 @@ How privacy is handled:
 - **Row-Level Security** (see `supabase/schema.sql`) means a signed-in user can only ever read/write their *own* row — no user can see another's health data, enforced at the database.
 - The `/api/generate` endpoint **requires a valid session** when Supabase is configured, and caps request size. Because anyone can create an account, set **`ALLOWED_EMAILS`** (comma-separated) in the host's environment to restrict AI generation to specific accounts; everyone else quietly gets the built-in engine instead of spending your Anthropic credits.
 - If Supabase env vars are absent, the app runs in **local-only mode** (no sign-in, data stays in that browser) — handy for dev and static demos.
+- Signing out drops that account's data from memory and never copies it anywhere another account on the same device could import it.
+
+**Keeping the backend alive.** Supabase pauses free-tier projects after a stretch of inactivity — the project's hostname stops resolving and sign-in/sync fail for everyone until it's restored from the Supabase dashboard. `vercel.json` schedules a daily call to **`/api/health`**, which makes a small request to the project (the activity that prevents the pause) and reports whether the account backend is reachable. If something seems off, open `https://<your-app>/api/health`: `{"accounts":"unreachable"}` means the Supabase project needs attention.
 
 **Setup (one time):**
 1. Create a free project at supabase.com.
@@ -70,7 +73,7 @@ How privacy is handled:
 
 **Migrating existing on-device data:** if you used the app before signing in, then after your first sign-in go to **Settings → Account → "Import data already on this device"** to pull that history into your account. (New accounts start fresh, so other people signing in on the same device don't inherit your data.)
 
-> Note on sync: each device keeps a cached copy and syncs the whole state. A failed cloud read is never mistaken for a new account (the app shows a retry screen rather than starting fresh), edits made without signal are kept and uploaded later, and when two copies diverge the dated records (workouts, symptom reports, plans) are merged rather than overwritten. The app re-syncs whenever it returns to the foreground. Sign-out keeps the local cache on that device but hides it behind the next sign-in.
+> Note on sync: the app is offline-first — a device that already has your data shows it immediately and settles with the cloud in the background, and a stored sign-in keeps working when the account server can't be reached (you get a plain "can't reach your account" notice, the built-in engine, and local saving until it's back). Each device keeps a cached copy and syncs the whole state. A failed cloud read is never mistaken for a new account (the app shows a retry screen rather than starting fresh), edits made without signal are kept and uploaded later, and when two copies diverge the dated records (workouts, symptom reports, plans) are merged rather than overwritten. The app re-syncs whenever it returns to the foreground. Sign-out keeps the local cache on that device but hides it behind the next sign-in.
 
 ## Two modes: patient & caregiver
 
@@ -91,7 +94,7 @@ An optional, free-text place (Settings) to record **conditions, current medicati
 
 ## The phase engine
 
-Phase is determined automatically from surgery date + clearance flags (override available in Settings, but the sternal guardrail always holds). **Phase 3 must be earned, not aged into:** whenever sternal precautions lift, the engine holds Phase 2 for a few weeks of rebuilding before stepping up — so someone cleared late (already 12+ weeks post-op by the calendar) still gets a graded reloading period instead of jumping straight to higher intensity after months of detraining.
+Phase is determined automatically from surgery date + clearance flags (override available in Settings, but the sternal guardrail always holds). **Phase 3 must be earned, not aged into:** whenever sternal precautions lift, the engine holds Phase 2 for a few weeks of rebuilding before stepping up — so someone cleared late (already 12+ weeks post-op by the calendar) still gets a graded reloading period instead of jumping straight to higher intensity after months of detraining. The same goes for consistency: Phases 3 and 4 also require recently *logged* training (about 4 workouts in three weeks for Phase 3, about 9 for Phase 4), re-checked at the start of each week. After a layoff the program steps down and a few consistent weeks bring it back, rather than resuming at full intensity on day one.
 
 - **Phase 1 · Recover** — walking, breathing, gentle *unloaded* legs. RPE 2–3. (Until cleared + sternum healed.)
 - **Phase 2 · Rebuild** — light dumbbell strength + steady intervals. RPE 3–5. (After sternal precautions lift.)
@@ -99,6 +102,8 @@ Phase is determined automatically from surgery date + clearance flags (override 
 - **Phase 4 · Perform** — varied, periodized scaled CrossFit. RPE up to 8 on intervals — never maximal.
 
 Each day generates **warmup + workout (strength and/or conditioning) + cooldown**, drawn only from the user's available equipment, deterministic per day (stable once viewed) but varied across days.
+
+**Loads are a position in what you own, never "the heaviest you own."** Both engines share one policy: each phase has a default spot in the range of weights the user listed (upper-body and explosive lifts sit lower) and a ceiling above it. The built-in engine starts at the default and moves a step at a time with the "How were the weights?" answers logged after workouts; the AI may progress up to the ceiling and is only shown the weights that phase allows. Sessions are kept lean by construction (nothing over ~45 minutes).
 
 **Recovery-aware rotation (Phase 3+).** From the Build phase on — once there's real load to manage — consecutive training days steer away from re-stacking the same loaded movement patterns (squat, hinge, push, pull, lunge, carry). In AI mode this falls out of weekly planning: the model balances patterns across the whole block, and is told which patterns the previous block emphasized. The built-in engine does it day-by-day: it re-orders strength priority so freshly-rested patterns lead and biases conditioning selection toward different patterns before relaxing. Both degrade gracefully (if the only sensible movements overlap, they're still used), and in early phases — where building familiarity with a small set of movements matters more than novelty — this is off.
 
@@ -142,7 +147,9 @@ Without the optional accounts backend (below), all data lives in the browser's l
 ## Project layout
 
 ```
+vercel.json    daily cron -> /api/health (keeps the free-tier Supabase project from pausing)
 api/
+  health.ts    reachability check for the account backend + the keep-alive request
   generate.ts  serverless function: holds the API key, verifies the session, calls Claude
                (structured output + prompt caching; weekly-block and single-day modes)
 supabase/

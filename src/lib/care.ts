@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { authStorageKey, supabase } from './supabase'
 import { mergeState } from '../state/store'
 import type { AppState } from '../types'
 
@@ -20,6 +20,31 @@ export interface Follow {
 // Unambiguous alphabet (no 0/O/1/I/L).
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 
+/**
+ * The signed-in user's id, read from the session stored on this device — no
+ * network involved. (Asking the client would retry a token refresh for ~30s
+ * when the server is unreachable, then answer "nobody".)
+ */
+function currentUserId(): string | null {
+  try {
+    const raw = authStorageKey ? localStorage.getItem(authStorageKey) : null
+    return raw ? ((JSON.parse(raw) as { user?: { id?: string } }).user?.id ?? null) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Run a query with a deadline. A request that can't reach the server must
+ * surface as a failure the UI can show — not hang, and not look like "no rows".
+ */
+async function settle<T>(query: PromiseLike<{ data: T | null; error: { message: string } | null }>): Promise<T | null> {
+  const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('network timeout')), 10_000))
+  const { data, error } = await Promise.race([Promise.resolve(query), timeout])
+  if (error) throw new Error(error.message)
+  return data
+}
+
 function generateCode(): string {
   const bytes = new Uint8Array(6)
   crypto.getRandomValues(bytes)
@@ -29,8 +54,7 @@ function generateCode(): string {
 /** Patient: create a new share code others can redeem. */
 export async function createShareCode(label: string): Promise<ShareLink | null> {
   if (!supabase) return null
-  const { data: auth } = await supabase.auth.getUser()
-  const uid = auth.user?.id
+  const uid = currentUserId()
   if (!uid) return null
   const code = generateCode()
   const { data, error } = await supabase
@@ -45,14 +69,15 @@ export async function createShareCode(label: string): Promise<ShareLink | null> 
 /** Patient: list the share codes they've created. */
 export async function listShares(): Promise<ShareLink[]> {
   if (!supabase) return []
-  const { data: auth } = await supabase.auth.getUser()
-  const uid = auth.user?.id
+  const uid = currentUserId()
   if (!uid) return []
-  const { data } = await supabase
-    .from('care_links')
-    .select('id, code, patient_label, caregiver_id, accepted_at')
-    .eq('patient_id', uid)
-    .order('created_at', { ascending: false })
+  const data = await settle(
+    supabase
+      .from('care_links')
+      .select('id, code, patient_label, caregiver_id, accepted_at')
+      .eq('patient_id', uid)
+      .order('created_at', { ascending: false }),
+  )
   return (data ?? []) as ShareLink[]
 }
 
@@ -74,14 +99,15 @@ export async function followByCode(code: string): Promise<{ patient_id: string; 
 /** Caregiver: list the patients they follow. */
 export async function listFollows(): Promise<Follow[]> {
   if (!supabase) return []
-  const { data: auth } = await supabase.auth.getUser()
-  const uid = auth.user?.id
+  const uid = currentUserId()
   if (!uid) return []
-  const { data } = await supabase
-    .from('care_links')
-    .select('id, patient_id, patient_label, accepted_at')
-    .eq('caregiver_id', uid)
-    .order('accepted_at', { ascending: false })
+  const data = await settle(
+    supabase
+      .from('care_links')
+      .select('id, patient_id, patient_label, accepted_at')
+      .eq('caregiver_id', uid)
+      .order('accepted_at', { ascending: false }),
+  )
   return (data ?? []) as Follow[]
 }
 
@@ -94,7 +120,9 @@ export async function unfollow(id: string): Promise<void> {
 /** Caregiver: read a followed patient's full state (RLS permits read-only). */
 export async function getPatientState(patientId: string): Promise<AppState | null> {
   if (!supabase) return null
-  const { data, error } = await supabase.from('app_state').select('state').eq('user_id', patientId).maybeSingle()
-  if (error || !data?.state) return null
+  // Throws when the server can't be reached; null means reachable but no
+  // readable row (never shared, or sharing was revoked).
+  const data = await settle<{ state: unknown }>(supabase.from('app_state').select('state').eq('user_id', patientId).maybeSingle())
+  if (!data?.state) return null
   return mergeState(data.state as Partial<AppState>)
 }

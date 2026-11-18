@@ -20,7 +20,7 @@ interface ReqBody {
   loads: Record<string, number[]>
   recentTitles: string[]
   recentPatterns?: string[]
-  movements: { id: string; name: string; pattern: string; cue: string }[]
+  movements: { id: string; name: string; pattern: string }[]
   conditions?: string
   medications?: string
   careNotes?: string
@@ -75,7 +75,7 @@ ABSOLUTE SAFETY RULES (never violate):
 1. Use ONLY movements from the provided list, referenced by their exact "id". Never invent movements. The list is already filtered for what is safe at their current phase and sternal-precaution status — if a movement is not in the list, they may not do it today.
 2. Intensity is judged by perceived effort (RPE 0-10) and the talk test, NEVER heart rate (cardiac medications such as beta-blockers make heart rate an unreliable intensity guide). Keep the whole session within the given rpeLow..rpeHigh range. Never program "to failure" or maximal effort.
 3. Every non-recovery session MUST include a "warmup" block first and a "cooldown" block last. Strength and/or conditioning go in between.
-4. Suggested dumbbell loads must come from the loads they own. Lighter loads for overhead/pressing.
+4. Suggested loads must come from the listed weights (these are the weights appropriate for the current phase, not everything they own). Start in the lower part of each list; use clearly lighter loads for overhead/pressing, pulling, and explosive lifts such as swings and thrusters.
 5. Keep total time roughly 20-35 minutes (recovery days shorter), and keep the session lean: warm-up at most 3 movements, the main work (strength and/or conditioning) just 2-3 distinct movements, cool-down at most 3 movements — about 8 distinct movements total, never more than 10.
 6. Do not write movement coaching cues — the app supplies vetted cues. You provide titles, the "format" line, a short block "note", the dose (e.g. "3 rounds x 10", "AMRAP 10 min", "30 sec hold"), and optional loadLb.
 7. Keep doses logically consistent: for movements that alternate sides (lunges, step-ups, dead bug, etc.) prescribe an EVEN total rep count so both sides get equal work, and make sure the format's round/time math is coherent.
@@ -232,7 +232,7 @@ export default async function handler(req: any, res: any) {
 Phase: ${body.phaseName} — ${body.phaseTagline}
 Target effort: RPE ${body.rpeLow}–${body.rpeHigh}. Talk test: ${body.talkTest}
 Upper-body/chest loading allowed: ${body.allowsSternalLoad ? 'yes' : 'NO — keep all load off the arms/chest'}${body.allowsSternalLoad && body.weeksSinceSternalLift != null ? ` (sternal precautions lifted ${body.weeksSinceSternalLift} week${body.weeksSinceSternalLift === 1 ? '' : 's'} ago — see UPPER-BODY RAMP-IN if under 4)` : ''}
-Loadable equipment they own (use these weights for loadLb): ${Object.keys(body.loads).length ? Object.entries(body.loads).map(([k, v]) => `${k}: ${v.join('/')} lb`).join('; ') : 'none'}
+Weights available this phase (use only these for loadLb): ${Object.keys(body.loads).length ? Object.entries(body.loads).map(([k, v]) => `${k}: ${v.join('/')} lb`).join('; ') : 'none'}
 ${body.underusedEquipment?.length ? `Owned but not used in recent programming (see EQUIPMENT ROTATION): ${body.underusedEquipment.join(', ')}\n` : ''}${body.recentActuals ? `Recent training log (prescribed vs how it landed — see PROGRESSION):\n${body.recentActuals}\n` : ''}Recent session titles (make new days feel different): ${body.recentTitles.length ? body.recentTitles.join('; ') : 'none yet'}`
 
     const movementList = `Movements you may use (use the exact id):

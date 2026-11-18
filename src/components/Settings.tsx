@@ -7,12 +7,13 @@ import { PHASES } from '../data/phases'
 import type { PhaseId } from '../types'
 
 export function Settings() {
-  const { state, updateProfile, resetAll, importLocalData, hasLegacyData } = useStore()
+  const { state, updateProfile, resetAll, importLocalData, hasLegacyData, legacyLoggedDays, sync, retrySync } = useStore()
   const auth = useAuth()
   const p = state.profile
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmCaregiver, setConfirmCaregiver] = useState(false)
   const [imported, setImported] = useState(false)
+  const [confirmImport, setConfirmImport] = useState(false)
   const signedIn = auth.configured && auth.status === 'signedIn'
 
   return (
@@ -58,19 +59,53 @@ export function Settings() {
             <p className="text-base text-slate-700">
               Signed in as <span className="font-semibold">{auth.user?.email ?? 'your account'}</span>
             </p>
-            <p className="text-sm text-slate-500">Your workouts and history sync securely across your devices.</p>
-            {hasLegacyData && (
-              <Button
-                variant="secondary"
-                className="!text-sm"
-                disabled={imported}
-                onClick={() => {
-                  importLocalData()
-                  setImported(true)
-                }}
-              >
-                {imported ? '✓ Imported this device’s data' : 'Import data already on this device'}
+            {sync === 'unreachable' ? (
+              <div className="rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-200">
+                <p className="text-sm font-semibold text-amber-900">⚠ Not syncing — can’t reach your account right now.</p>
+                <p className="mt-0.5 text-sm text-amber-900">
+                  Changes are saved on this device and will upload when it reconnects.
+                </p>
+                <button onClick={retrySync} className="mt-1 text-sm font-semibold text-amber-900 underline">
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">
+                Your workouts and history sync securely across your devices.{' '}
+                <span className="font-semibold text-emerald-700">{sync === 'saving' ? 'Saving…' : '✓ Up to date'}</span>
+              </p>
+            )}
+            {imported && <p className="text-sm font-semibold text-emerald-700">✓ Imported this device’s earlier data</p>}
+            {hasLegacyData && !imported && !confirmImport && (
+              <Button variant="secondary" className="!text-sm" onClick={() => setConfirmImport(true)}>
+                Import earlier data from this device
               </Button>
+            )}
+            {hasLegacyData && !imported && confirmImport && (
+              <div className="space-y-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+                <p className="text-sm font-semibold text-amber-900">Replace your account’s data with the earlier copy on this device?</p>
+                <p className="text-sm text-amber-900">
+                  That copy was saved on this device before signing in. It has {legacyLoggedDays} logged{' '}
+                  {legacyLoggedDays === 1 ? 'day' : 'days'}; your account currently has {Object.keys(state.log).length}. Importing{' '}
+                  <span className="font-semibold">replaces</span> what’s in your account now and can’t be undone.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    className="!text-sm"
+                    onClick={() => {
+                      importLocalData()
+                      setImported(true)
+                      setConfirmImport(false)
+                    }}
+                  >
+                    Yes, replace
+                  </Button>
+                  <Button variant="ghost" className="!text-sm" onClick={() => setConfirmImport(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
             )}
             <Button variant="ghost" className="!text-sm" onClick={() => auth.signOut()}>
               Sign out
@@ -156,8 +191,9 @@ export function Settings() {
       <SectionTitle>Training phase</SectionTitle>
       <Card className="p-5">
         <p className="text-sm text-slate-600">
-          By default your phase is chosen automatically from your surgery date and clearances — the safe option. You can
-          override it, but please don’t move ahead of what your care team advises.
+          By default your phase is chosen automatically from your surgery date, your clearances, and how consistently
+          you’ve been training lately — the safe option. After time away it steps down and builds back up over a few
+          weeks. You can override it, but please don’t move ahead of what your care team advises.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button

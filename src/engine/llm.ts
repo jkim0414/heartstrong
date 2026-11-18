@@ -1,6 +1,6 @@
 import type { EquipmentItem, ISODate, Pattern, PhaseId, Profile, RawAiWorkout, Workout } from '../types'
 import { PHASES, WEEKLY_SCHEDULE } from '../data/phases'
-import { getEligibleMovements, loadableLoads } from './generator'
+import { getEligibleMovements, loadRange, loadableLoads } from './generator'
 import { validateAiWeek, validateAiWorkout } from './validate'
 import { weekday, weeksSince } from '../lib/date'
 import { getAccessToken } from '../state/auth'
@@ -32,7 +32,7 @@ export interface AiRequest {
   /** Weeks since sternal precautions lifted (null if unknown) — gates pressing ramp-in. */
   weeksSinceSternalLift?: number | null
   /** The ONLY movements the model may use — already safety-filtered. */
-  movements: { id: string; name: string; pattern: string; cue: string }[]
+  movements: { id: string; name: string; pattern: string }[]
   /** Optional health background, for caution context only. */
   conditions?: string
   medications?: string
@@ -57,7 +57,6 @@ function buildRequest(
     id: m.id,
     name: m.name,
     pattern: m.pattern,
-    cue: m.cue,
   }))
   return {
     date,
@@ -70,7 +69,11 @@ function buildRequest(
     talkTest: def.talkTest,
     allowsSternalLoad: def.allowsSternalLoad && profile.sternalPrecautionsLifted,
     suggestedFocus: WEEKLY_SCHEDULE[phase][weekday(date)],
-    loads: loadableLoads(equipment),
+    // Offer only the weights this phase allows (the validator enforces the
+    // same ceiling) so the plan is coherent rather than clamped afterwards.
+    loads: Object.fromEntries(
+      Object.entries(loadableLoads(equipment)).map(([id, w]) => [id, w.slice(0, loadRange(phase, false, w.length).cap + 1)]),
+    ),
     recentTitles: recentTitles.slice(0, 10),
     recentPatterns: phase >= 3 ? recentPatterns : [],
     weeksSinceSternalLift: profile.sternalPrecautionsLiftedOn ? weeksSince(profile.sternalPrecautionsLiftedOn, date) : null,

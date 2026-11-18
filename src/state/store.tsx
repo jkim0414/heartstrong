@@ -116,28 +116,53 @@ function saveMeta(key: string, meta: SyncMeta) {
   }
 }
 
+/**
+ * Resolve with `fallback` if `work` hasn't settled in `ms`. The Supabase client
+ * retries a token refresh for ~30s before a request even leaves when its
+ * server is unreachable; nothing in the app should wait on that.
+ */
+function within<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([work, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))])
+}
+
+const CLOUD_READ_TIMEOUT_MS = 10_000
+const CLOUD_WRITE_TIMEOUT_MS = 15_000
+
+/** Logged days in the pre-account copy on this device (0 if none). */
+function legacyLoggedDays(): number {
+  return Object.keys(readLocal(STORAGE_KEY)?.log ?? {}).length
+}
+
 async function loadCloud(userId: string): Promise<CloudResult> {
-  if (!supabase) return { ok: false }
-  try {
-    const { data, error } = await supabase.from('app_state').select('state, updated_at').eq('user_id', userId).maybeSingle()
-    if (error) return { ok: false }
-    if (!data?.state) return { ok: true, state: null, updatedAt: null }
-    return { ok: true, state: mergeState(data.state as Partial<AppState>), updatedAt: (data.updated_at as string) ?? null }
-  } catch {
-    return { ok: false }
+  const client = supabase
+  if (!client) return { ok: false }
+  const read = async (): Promise<CloudResult> => {
+    try {
+      const { data, error } = await client.from('app_state').select('state, updated_at').eq('user_id', userId).maybeSingle()
+      if (error) return { ok: false }
+      if (!data?.state) return { ok: true, state: null, updatedAt: null }
+      return { ok: true, state: mergeState(data.state as Partial<AppState>), updatedAt: (data.updated_at as string) ?? null }
+    } catch {
+      return { ok: false }
+    }
   }
+  return within(read(), CLOUD_READ_TIMEOUT_MS, { ok: false })
 }
 
 /** Upload the whole state. Returns the stored `updated_at`, or null on failure. */
 async function saveCloud(userId: string, state: AppState): Promise<string | null> {
-  if (!supabase) return null
+  const client = supabase
+  if (!client) return null
   const updatedAt = new Date().toISOString()
-  try {
-    const { error } = await supabase.from('app_state').upsert({ user_id: userId, state, updated_at: updatedAt })
-    return error ? null : updatedAt
-  } catch {
-    return null
+  const write = async (): Promise<string | null> => {
+    try {
+      const { error } = await client.from('app_state').upsert({ user_id: userId, state, updated_at: updatedAt })
+      return error ? null : updatedAt
+    } catch {
+      return null
+    }
   }
+  return within(write(), CLOUD_WRITE_TIMEOUT_MS, null)
 }
 
 // ---- Derived stats --------------------------------------------------------
@@ -270,7 +295,21 @@ interface Store {
   importLocalData: () => void
   /** Whether pre-account data exists on this device to import. */
   hasLegacyData: boolean
+  /** How many logged days that pre-account copy holds (to judge an import). */
+  legacyLoggedDays: number
+  /** Cloud sync health, so an unreachable account is visible instead of silent. */
+  sync: SyncStatus
+  /** Try to reach the account again now (e.g. from a "Try again" button). */
+  retrySync: () => void
 }
+
+/**
+ * - `local`: no account backend; data lives on this device only.
+ * - `synced` / `saving`: the account is reachable.
+ * - `unreachable`: the last attempt to reach the account failed. The app keeps
+ *   working from this device's copy and uploads once it can.
+ */
+export type SyncStatus = 'local' | 'synced' | 'saving' | 'unreachable'
 
 const StoreContext = createContext<Store | null>(null)
 
@@ -289,10 +328,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const userId = auth.user?.id ?? null
   const storageKey = userId ? `${STORAGE_KEY}.${userId}` : STORAGE_KEY
 
-  const [state, setState] = useState<AppState>(() => loadLocal(STORAGE_KEY))
+  // The account-less key is this app's storage ONLY in local-only mode. With
+  // accounts on, it is read-only pre-account data (an import source) and one
+  // account's state must never be written there.
+  const [state, setState] = useState<AppState>(() => (isAuthConfigured ? defaultState() : loadLocal(STORAGE_KEY)))
   const [hydrated, setHydrated] = useState<boolean>(!isAuthConfigured)
   const [loadError, setLoadError] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(isAuthConfigured ? 'synced' : 'local')
   // Bumped when the app returns to the foreground so `today` rolls over even if
   // the PWA was left open overnight.
   const [, setClock] = useState(0)
@@ -320,6 +363,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (at) {
       sync.current.meta = { lastSyncedAt: at, dirty: stateRef.current !== snapshot }
       persistMeta()
+      setSyncStatus(sync.current.meta.dirty ? 'saving' : 'synced')
+    } else {
+      setSyncStatus('unreachable')
     }
   }
 
@@ -329,10 +375,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     sync.current.busy = true
     try {
       const cloud = await loadCloud(userId)
-      if (!cloud.ok) return
+      if (!cloud.ok) {
+        setSyncStatus('unreachable')
+        return
+      }
       // Common case: nothing changed on either side — don't churn state.
       if (cloud.state && cloud.updatedAt === sync.current.meta.lastSyncedAt && !sync.current.meta.dirty) {
         sync.current.verified = true
+        setSyncStatus('synced')
         return
       }
       const d = decideSync(cloud, stateRef.current, sync.current.meta, defaultState)
@@ -350,6 +400,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           sync.current.meta = { lastSyncedAt: at, dirty: false }
           persistMeta()
         }
+        setSyncStatus(at ? 'synced' : 'unreachable')
+      } else {
+        setSyncStatus('synced')
       }
     } finally {
       sync.current.busy = false
@@ -371,13 +424,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return
       }
       if (!userId) {
-        if (!cancelled) setHydrated(true) // signed out; SignIn screen will show
+        // Signed out: the SignIn screen shows. Drop the previous account's data
+        // from memory so it can't leak into storage or the next sign-in.
+        if (!cancelled) {
+          remoteStateRef.current = null
+          setState(defaultState())
+          setHydrated(true)
+        }
         return
       }
       const local = readLocal(storageKey)
       const meta = loadMeta(storageKey)
-      // Show this device's cached copy instantly, then reconcile with the cloud.
-      if (local?.profile.onboarded) setState(local)
+      if (local?.profile.onboarded) {
+        // Offline-first: this device already has their data, so show it now
+        // and settle with the cloud in the background. Launch never waits on
+        // the network, and an unreachable server can't block the app.
+        sync.current = { meta, verified: false, busy: false }
+        remoteStateRef.current = local // loaded, not edited — nothing to upload
+        stateRef.current = local
+        setState(local)
+        setSyncStatus(meta.dirty ? 'saving' : 'synced')
+        setHydrated(true)
+        void reconcile()
+        return
+      }
+      // Nothing usable on this device: the cloud copy is the only source.
       const cloud = await loadCloud(userId)
       if (cancelled) return
       const d = decideSync(cloud, local, meta, defaultState)
@@ -393,13 +464,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!d.push) remoteStateRef.current = d.state
       setState(d.state)
       saveLocal(storageKey, d.state)
+      setSyncStatus(!d.verified ? 'unreachable' : d.push ? 'saving' : 'synced')
       setHydrated(true)
       if (d.push) {
         const at = await saveCloud(userId, d.state)
-        if (at && !cancelled) {
+        if (cancelled) return
+        if (at) {
           sync.current.meta = { lastSyncedAt: at, dirty: false }
           saveMeta(storageKey, sync.current.meta)
         }
+        setSyncStatus(at ? 'synced' : 'unreachable')
       }
     })()
     return () => {
@@ -411,11 +485,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Persist on change: local cache always; cloud (debounced) when signed in.
   useEffect(() => {
     if (!hydrated) return
+    // Signed out with accounts on: nothing to persist. (Saving here would copy
+    // the just-signed-out person's data into the shared, account-less key —
+    // where the next person to sign in on this device would be offered it.)
+    if (auth.configured && !userId) return
     saveLocal(storageKey, state)
     if (!auth.configured || !userId) return
     if (state === remoteStateRef.current) return // just arrived from the cloud
     sync.current.meta = { ...sync.current.meta, dirty: true }
     persistMeta()
+    if (sync.current.verified) setSyncStatus('saving')
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => void pushNow(), 800)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -439,7 +518,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, userId])
 
-  const phaseResult = useMemo(() => determinePhase(state.profile, today), [state.profile, today])
+  const phaseResult = useMemo(() => determinePhase(state.profile, today, state.log), [state.profile, state.log, today])
   const stats = useMemo(() => computeStats(state, today), [state, today])
 
   const store: Store = useMemo(() => {
@@ -516,10 +595,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }),
       updateEquipment: (eq) => setState((s) => ({ ...s, equipment: eq })),
       resetAll: () => setState(defaultState()),
-      importLocalData: () => setState(loadLocal(STORAGE_KEY)),
-      hasLegacyData: hasLegacyLocalData(),
+      importLocalData: () => {
+        const legacy = readLocal(STORAGE_KEY)
+        if (!legacy) return
+        setState(legacy)
+        // A one-time migration: remove the source so an old copy can never be
+        // re-imported later over newer account data.
+        try {
+          localStorage.removeItem(STORAGE_KEY)
+        } catch {
+          /* non-fatal */
+        }
+      },
+      hasLegacyData: auth.configured && !!userId && hasLegacyLocalData(),
+      legacyLoggedDays: legacyLoggedDays(),
+      sync: syncStatus,
+      retrySync: () => void reconcile(),
     }
-  }, [state, today, phaseResult, stats])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, today, phaseResult, stats, syncStatus])
 
   if (loadError) {
     return (
@@ -534,6 +628,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           className="rounded-xl bg-brand-700 px-6 py-3 text-base font-semibold text-white"
         >
           Try again
+        </button>
+        <button onClick={() => void auth.signOut()} className="text-sm font-semibold text-slate-500 underline">
+          Sign out
         </button>
       </div>
     )

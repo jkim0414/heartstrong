@@ -2,6 +2,13 @@ import { useState } from 'react'
 import { useAuth } from '../state/auth'
 import { Button, Card } from './ui'
 
+/** Raw fetch failures ("Failed to fetch", "Load failed") mean nothing to most people. */
+function friendly(error: string): string {
+  return /fetch|network|load failed|timed? ?out/i.test(error)
+    ? 'We can’t reach HeartStrong right now. Check your internet connection and try again in a little while.'
+    : error
+}
+
 export function SignIn() {
   const { signInWithEmail, signInWithGoogle } = useAuth()
   const [email, setEmail] = useState('')
@@ -15,7 +22,7 @@ export function SignIn() {
     setError(null)
     const { error } = await signInWithEmail(email)
     setBusy(false)
-    if (error) setError(error)
+    if (error) setError(friendly(error))
     else setSent(true)
   }
 
@@ -65,7 +72,15 @@ export function SignIn() {
               <div className="flex items-center gap-3 text-sm text-slate-500">
                 <span className="h-px flex-1 bg-slate-200" /> or <span className="h-px flex-1 bg-slate-200" />
               </div>
-              <Button variant="secondary" full onClick={() => signInWithGoogle()}>
+              <Button
+                variant="secondary"
+                full
+                onClick={async () => {
+                  setError(null)
+                  const { error } = await signInWithGoogle().catch(() => ({ error: 'network' }))
+                  if (error) setError(friendly(error))
+                }}
+              >
                 Continue with Google
               </Button>
             </>

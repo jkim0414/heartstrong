@@ -101,8 +101,16 @@ export function FollowPeople({ heading = true }: { heading?: boolean }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{ patientId: string; label: string } | null>(null)
+  // null = still loading; a failed load must not look like "following no one".
+  const [loaded, setLoaded] = useState<boolean | null>(null)
 
-  const refresh = () => listFollows().then(setFollows).catch(() => {})
+  const refresh = () =>
+    listFollows()
+      .then((f) => {
+        setFollows(f)
+        setLoaded(true)
+      })
+      .catch(() => setLoaded(false))
   useEffect(() => {
     refresh()
   }, [])
@@ -116,7 +124,8 @@ export function FollowPeople({ heading = true }: { heading?: boolean }) {
       setCodeInput('')
       refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not follow that code')
+      const msg = e instanceof Error ? e.message : ''
+      setError(/fetch|network|load failed/i.test(msg) ? 'Can’t reach HeartStrong right now — check your connection and try again.' : msg || 'Could not follow that code')
     } finally {
       setBusy(false)
     }
@@ -140,6 +149,18 @@ export function FollowPeople({ heading = true }: { heading?: boolean }) {
               </div>
             ))}
           </div>
+        ) : loaded === false ? (
+          <div className="rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-200">
+            <p className="text-sm font-semibold text-amber-900">Couldn’t load the people you follow.</p>
+            <p className="mt-0.5 text-sm text-amber-900">
+              HeartStrong can’t reach its server right now. Check your connection and try again.
+            </p>
+            <button onClick={refresh} className="mt-1 text-sm font-semibold text-amber-900 underline">
+              Try again
+            </button>
+          </div>
+        ) : loaded === null ? (
+          <p className="text-sm text-slate-500">Loading…</p>
         ) : (
           <p className="text-sm text-slate-600">You’re not following anyone yet. Enter a share code below to start.</p>
         )}

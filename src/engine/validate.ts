@@ -1,7 +1,7 @@
 import type { EquipmentItem, ISODate, PhaseId, Profile, RawAiWorkout, Workout, WorkoutBlock } from '../types'
 import { MOVEMENTS_BY_ID } from '../data/movements'
 import { PHASES } from '../data/phases'
-import { getEligibleMovements, loadableLoads } from './generator'
+import { getEligibleMovements, loadIndexRange, loadableLoads } from './generator'
 import { normalizeWorkout } from './normalize'
 
 export interface ValidationResult {
@@ -60,12 +60,17 @@ export function validateAiWorkout(
           errors.push(`Ineligible movement for this phase/precautions: ${m.name}`)
           return null
         }
-        // Clamp loads to a weight the user actually owns for this movement.
+        // Snap loads to a weight the user actually owns for this movement, then
+        // hold them to the phase's ceiling — the same policy the built-in
+        // engine uses, so the model can progress loads but never past what
+        // this phase allows (owning heavy dumbbells isn't a prescription).
         let loadLb: number | undefined
         const reqWeights = m.requires.map((r) => loadsByEquip[r]).find((w) => w && w.length)
         if (reqWeights && typeof it.loadLb === 'number') {
           const target = it.loadLb
-          loadLb = reqWeights.reduce((best, w) => (Math.abs(w - target) < Math.abs(best - target) ? w : best), reqWeights[0])
+          const nearest = reqWeights.reduce((best, w) => (Math.abs(w - target) < Math.abs(best - target) ? w : best), reqWeights[0])
+          const ceiling = reqWeights[loadIndexRange(phase, m, reqWeights.length).cap]
+          loadLb = Math.min(nearest, ceiling)
         }
         return {
           movementId: m.id,

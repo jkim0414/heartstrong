@@ -1,8 +1,27 @@
-import type { PhaseId, Profile, ISODate } from '../types'
-import { weeksSince, todayISO } from '../lib/date'
+import type { AppState, PhaseId, Profile, ISODate } from '../types'
+import { addDays, weekday, weeksSince, todayISO } from '../lib/date'
 
 /** Weeks of Phase-2 rebuilding required after sternal precautions lift before Phase 3+. */
 export const P2_DWELL_WEEKS = 3
+
+/**
+ * Consistency gate: the higher phases require recent training, not just time
+ * since surgery. Counted over the ACTIVITY_WINDOW_DAYS before the current
+ * week began, so the phase holds steady within a week.
+ */
+export const ACTIVITY_WINDOW_DAYS = 21
+/** Completed workouts in the window needed for Phase 3 (~1–2 a week). */
+export const SESSIONS_FOR_PHASE_3 = 4
+/** Completed workouts in the window needed for Phase 4 (~3 a week). */
+export const SESSIONS_FOR_PHASE_4 = 9
+
+/** Completed workouts in the activity window before the week containing `date`. */
+export function recentSessions(log: AppState['log'], date: ISODate): number {
+  const weekStart = addDays(date, -weekday(date))
+  let n = 0
+  for (let i = 1; i <= ACTIVITY_WINDOW_DAYS; i++) if (log[addDays(weekStart, -i)]?.status === 'completed') n++
+  return n
+}
 
 export interface PhaseResult {
   phase: PhaseId
@@ -22,10 +41,15 @@ export interface PhaseResult {
 // Guardrails (intentionally conservative for a ~1-month-post-CABG patient):
 //  - Not cleared to exercise  -> Phase 1, no matter what.
 //  - Sternal precautions still on -> capped at Phase 1 (no arm/chest loading).
-//  - After clearance + sternal lift: ramp 2 -> 3 -> 4 by time under training.
+//  - After clearance + sternal lift: ramp 2 -> 3 -> 4 by time since surgery,
+//    but Phase 3+ must also be EARNED twice over: a few weeks of Phase-2
+//    rebuilding after the sternum is cleared, and recent consistent training
+//    (when a workout log is supplied). After a long layoff the calendar alone
+//    would hand back Phase-4 intensity on day one; the log gate steps it down
+//    and lets a few consistent weeks bring it back.
 // A manual override is honored but flagged (with a warning shown in the UI).
 // ---------------------------------------------------------------------------
-export function determinePhase(profile: Profile, today: ISODate = todayISO()): PhaseResult {
+export function determinePhase(profile: Profile, today: ISODate = todayISO(), log?: AppState['log']): PhaseResult {
   const weeksPostOp = profile.surgeryDate ? weeksSince(profile.surgeryDate, today) : null
 
   if (profile.phaseOverride != null) {
@@ -95,6 +119,20 @@ export function determinePhase(profile: Profile, today: ISODate = todayISO()): P
     phase = 4
     reason = 'Well into a durable training base — varied, progressive scaled conditioning.'
     nudge = null
+  }
+
+  // Consistency gate (only when we can see the log).
+  if (log && phase >= 3) {
+    const sessions = recentSessions(log, today)
+    if (sessions < SESSIONS_FOR_PHASE_3) {
+      phase = 2
+      reason = 'Easing back in — lighter strength work and steady efforts while you rebuild a rhythm.'
+      nudge = `The program steps back up once you’ve logged about ${SESSIONS_FOR_PHASE_3} workouts within three weeks. It re-checks at the start of each week.`
+    } else if (phase === 4 && sessions < SESSIONS_FOR_PHASE_4) {
+      phase = 3
+      reason = 'Building back up — progressive strength and conditioning, one step below your top phase.'
+      nudge = `About ${SESSIONS_FOR_PHASE_4} logged workouts within three weeks (roughly three a week) unlocks the top phase. It re-checks at the start of each week.`
+    }
   }
 
   return { phase, overridden: false, weeksPostOp, reason, nudge }

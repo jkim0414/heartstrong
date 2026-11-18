@@ -19,9 +19,11 @@ import type { ISODate } from '../types'
 // throw the result away and pay for it again) and so two mounts can't race.
 let weekRequest: Promise<void> | null = null
 let regenSalt = 0
+/** Longest the "planning your week" spinner may stand in for the workout. */
+const AI_MAX_WAIT_MS = 40_000
 
 export function Today() {
-  const { today, workoutFor, planFor, phaseResult, state, stats, setDayStatus, clearDay, setOverride, updateProfile, setAiWorkout, setAiWorkouts, recentTitles, recentPatternsFor } = useStore()
+  const { today, workoutFor, planFor, phaseResult, state, stats, setDayStatus, clearDay, setOverride, updateProfile, setAiWorkout, setAiWorkouts, clearAiWorkout, recentTitles, recentPatternsFor, sync, retrySync } = useStore()
   const deterministic = workoutFor(today)
   const entry = state.log[today]
   const readiness = state.readiness[today]
@@ -31,11 +33,17 @@ export function Today() {
   // A cached AI plan is used only if it's still valid under the current rules
   // (same phase, every movement still eligible with today's equipment and
   // precautions) — see engine/plan.ts.
-  const aiFresh = cachedPlanUsable(state.aiCache[today], today, state.profile, state.equipment)
+  const aiFresh = cachedPlanUsable(state.aiCache[today], today, state)
   const aiEligible = state.profile.aiEnabled && !override && !deterministic.isRecovery
-  const { workout, isAi: usingAi } = planFor(today)
+  const plan = planFor(today)
 
   const [aiLoading, setAiLoading] = useState(() => weekRequest != null)
+  // If the weekly plan is taking too long we show the built-in plan instead —
+  // and then keep it for this visit, so the workout never changes under
+  // someone who has already started reading it.
+  const [aiGaveUp, setAiGaveUp] = useState(false)
+  const workout = aiGaveUp ? deterministic : plan.workout
+  const usingAi = !aiGaveUp && plan.isAi
   const [regenerating, setRegenerating] = useState(false)
   const [regenFailed, setRegenFailed] = useState(false)
   const [showWhy, setShowWhy] = useState(false)
@@ -56,8 +64,8 @@ export function Today() {
     const horizon = weekday(today) >= 5 ? addDays(weekEnd, 7) : weekEnd
     const out: ISODate[] = []
     for (let d = today; d <= horizon; d = addDays(d, 1)) {
-      if (determinePhase(state.profile, d).phase !== phaseResult.phase) continue
-      if (cachedPlanUsable(state.aiCache[d], d, state.profile, state.equipment)) continue
+      if (determinePhase(state.profile, d, state.log).phase !== phaseResult.phase) continue
+      if (cachedPlanUsable(state.aiCache[d], d, state)) continue
       if (state.overrides[d]) continue
       if (workoutFor(d).isRecovery) continue
       out.push(d)
@@ -132,6 +140,9 @@ export function Today() {
 
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+    // The planner verifies the session with the account server; when that's
+    // unreachable the request can only hang and fail, so don't make it.
+    if (sync === 'unreachable') return
     let mounted = true
     if (!weekRequest) {
       const needed = neededAiDates()
@@ -159,7 +170,16 @@ export function Today() {
       mounted = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiEligible, aiFresh, today, phaseResult.phase])
+  }, [aiEligible, aiFresh, today, phaseResult.phase, sync])
+
+  // Never leave someone staring at a spinner: after a generous wait, fall back
+  // to the built-in plan for this visit.
+  const waitingOnAi = aiLoading && !aiFresh && aiEligible && !aiGaveUp
+  useEffect(() => {
+    if (!waitingOnAi) return
+    const t = setTimeout(() => setAiGaveUp(true), AI_MAX_WAIT_MS)
+    return () => clearTimeout(t)
+  }, [waitingOnAi])
 
   // "New variation": re-roll just today. The current workout stays on screen
   // until a validated replacement arrives, so a failed request costs nothing.
@@ -168,8 +188,10 @@ export function Today() {
     setRegenerating(true)
     setRegenFailed(false)
     const w = await fetchAiWorkout(today, phaseResult.phase, state.profile, state.equipment, recentTitles(), recentPatternsFor(today), ++regenSalt)
-    if (w) setAiWorkout(today, w)
-    else setRegenFailed(true)
+    if (w) {
+      setAiWorkout(today, w)
+      setAiGaveUp(false)
+    } else setRegenFailed(true)
     setRegenerating(false)
   }
 
@@ -186,6 +208,20 @@ export function Today() {
         </div>
         {stats.currentStreak > 0 && <Pill tone="amber">🔥 {stats.currentStreak}</Pill>}
       </div>
+
+      {/* Account unreachable — calm, but visible: silent sync failures go unnoticed for months */}
+      {sync === 'unreachable' && (
+        <Card className="border-l-4 border-slate-400 p-4">
+          <p className="text-base font-semibold text-slate-800">Can’t reach your account right now</p>
+          <p className="mt-1 text-sm text-slate-600">
+            Your workouts are still being saved on this device and will sync once it reconnects. If you keep seeing
+            this for more than a day, let the person who set up the app know.
+          </p>
+          <Button variant="secondary" className="mt-2 !py-2 !text-sm" onClick={retrySync}>
+            Try again
+          </Button>
+        </Card>
+      )}
 
       {/* Clearance nudge — compact, only when not cleared */}
       {!state.profile.clearedForExercise && (
@@ -301,7 +337,7 @@ export function Today() {
 
       {/* Workout */}
       {showWorkout && !entry && (
-        (aiLoading && !aiFresh && aiEligible) || regenerating ? (
+        waitingOnAi || regenerating ? (
           <Card className="flex items-center gap-3 p-6">
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-brand-200 border-t-brand-700" />
             <span className="text-base font-semibold text-slate-700">
@@ -313,7 +349,9 @@ export function Today() {
             {aiEligible && (
               <div className="flex items-center justify-between px-1">
                 <span className="text-sm font-medium text-slate-500">{usingAi ? '✨ AI-planned' : 'Built-in plan'}</span>
-                <button onClick={regenerate} className="py-1 text-base font-semibold text-brand-700">↻ New variation</button>
+                {sync !== 'unreachable' && (
+                  <button onClick={regenerate} className="py-1 text-base font-semibold text-brand-700">↻ New variation</button>
+                )}
               </div>
             )}
             {regenFailed && (
@@ -357,6 +395,9 @@ export function Today() {
               onCancel={() => setCompleting(false)}
               onSave={(notes, feltRpe, loadFeel, score) => {
                 setDayStatus(today, 'completed', { notes, feltRpe, loadFeel, score, workoutTitle: workout.title })
+                // If the built-in plan stood in for a slow AI plan, drop any AI
+                // plan that arrived late so history shows what was actually done.
+                if (aiGaveUp) clearAiWorkout(today)
                 setCompleting(false)
                 // Today isn't counted until it's logged, so completing it adds one.
                 setCelebrateStreak(stats.currentStreak + 1)

@@ -37,6 +37,8 @@ interface Ctx {
   eligible: Movement[]
   /** Loaded patterns emphasized recently (prior day) — steer away from these. */
   recentPatterns: Set<Pattern>
+  /** Steps above/below the phase's default load, earned from "too light/heavy" feedback. */
+  loadOffset: number
 }
 
 /** Patterns whose back-to-back repetition is worth avoiding (Phase 3+). */
@@ -113,18 +115,39 @@ function pickTag(ctx: Ctx, tag: string, used: Set<string>): Movement | null {
   return m
 }
 
+/** Explosive / momentum-driven lifts — kept lighter than slow lifts of the same pattern. */
+const BALLISTIC = new Set(['db_swing', 'kb_swing', 'db_thruster', 'wall_ball'])
+
+/**
+ * Load policy shared by the built-in engine AND the AI validator. A load is a
+ * POSITION within the weights the person owns — never "the heaviest by
+ * default" (owning 40 lb dumbbells must not mean being handed them).
+ *   base — the default suggestion for this phase and movement type
+ *   cap  — the most that feedback ("too light") or the AI may progress to
+ * Upper-body and ballistic lifts sit lower in the range than slow lower-body
+ * lifts. With only one or two weights owned, both collapse to what's there.
+ */
+export function loadIndexRange(phase: PhaseId, m: Movement, count: number): { base: number; cap: number } {
+  return loadRange(phase, m.pattern === 'push' || m.pattern === 'pull' || BALLISTIC.has(m.id), count)
+}
+
+/** The policy itself: `light` = upper-body or ballistic lift. See loadIndexRange. */
+export function loadRange(phase: PhaseId, light: boolean, count: number): { base: number; cap: number } {
+  const last = Math.max(0, count - 1)
+  const frac = phase <= 2 ? 0 : phase === 3 ? (light ? 0 : 0.34) : light ? 0.25 : 0.5
+  const base = Math.floor(last * frac)
+  const headroom = phase <= 2 && light ? 1 : 2
+  return { base, cap: Math.min(last, base + headroom) }
+}
+
 /** Suggested load for a movement, given the user's loadable equipment. */
 function chooseLoad(ctx: Ctx, m: Movement): number | undefined {
   // Use the first required equipment that the user owns weights for.
   for (const req of m.requires) {
     const w = ctx.loads[req]
     if (w && w.length) {
-      const light = w[0]
-      const heavy = w[w.length - 1]
-      // Easing in (phase 2) -> lightest. Upper-body / overhead -> lighter.
-      if (ctx.phase <= 2) return light
-      const upper = m.pattern === 'push' || m.pattern === 'pull'
-      return upper ? light : heavy
+      const { base, cap } = loadIndexRange(ctx.phase, m, w.length)
+      return w[Math.max(0, Math.min(cap, base + ctx.loadOffset))]
     }
   }
   return undefined
@@ -143,19 +166,32 @@ function toItem(ctx: Ctx, m: Movement, dose: string): PrescribedItem {
 
 // ---- Dose helpers ---------------------------------------------------------
 
-function strengthDose(ctx: Ctx): string {
+/** Timed holds — dosed in seconds, never reps. */
+const HOLDS = new Set(['wall_sit', 'plank_bench'])
+
+/** A strength dose that fits the movement: holds in seconds, carries in distance, the rest in reps. */
+function strengthDose(ctx: Ctx, m: Movement): string {
+  const sets = ctx.phase <= 2 ? 2 : 3
+  if (HOLDS.has(m.id)) return `${sets} sets × ${ctx.phase <= 2 ? '15–20' : '20–30'} sec hold`
+  if (m.pattern === 'carry') return m.id === 'farmer_carry' ? `${sets} sets × 30 m` : `${sets} sets × 20 m each side`
   if (ctx.phase <= 2) return '2 sets × 10 (leave plenty in the tank)'
-  if (ctx.phase === 3) return '3 sets × 10'
-  return '3 sets × 12'
+  return ctx.phase === 3 ? '3 sets × 10' : '3 sets × 12'
 }
 
-function walkMinutes(ctx: Ctx, kind: 'easy' | 'main'): number {
-  // Gentle progression with weeks post-op, with small day-to-day variety.
-  const base = ctx.phase === 1 ? 10 : 18
-  const ramp = Math.min(ctx.weeksPostOp, 16)
+/**
+ * Walk length in minutes. Sessions stay lean (~20–40 min all-in): consistency
+ * beats volume, and daily walking on top is encouraged separately. Progresses
+ * gently over the first weeks post-op, then holds.
+ *   recovery — the easy walk on an active-recovery day
+ *   easy     — a walk paired with leg work
+ *   main     — the day's main aerobic piece
+ */
+function walkMinutes(ctx: Ctx, kind: 'recovery' | 'easy' | 'main'): number {
   const variety = Math.floor(ctx.rng() * 3) // 0–2
-  const m = base + ramp + variety + (kind === 'main' ? 4 : 0)
-  return Math.max(8, Math.min(m, 45))
+  const weeks = Math.max(0, ctx.weeksPostOp)
+  if (kind === 'recovery') return 12 + Math.min(weeks, 4) + variety // 12–18
+  if (kind === 'easy') return 10 + Math.min(weeks, 4) + variety // 10–16
+  return 14 + Math.min(weeks, 6) + variety // 14–22
 }
 
 // ---- Block builders -------------------------------------------------------
@@ -173,7 +209,10 @@ function buildWarmup(ctx: Ctx): WorkoutBlock {
   }
   // One mobility / gentle loosening drill.
   const mobility = pickTag(ctx, 'warmup', used)
-  if (mobility) items.push(toItem(ctx, mobility, mobility.pattern === 'locomotion' ? '1–2 min' : '8–10 each side'))
+  if (mobility) {
+    const dose = mobility.pattern === 'locomotion' ? '1–2 min' : mobility.pattern === 'hinge' ? '8–10 slow reps' : '8–10 each side'
+    items.push(toItem(ctx, mobility, dose))
+  }
   // Gentle pulse-raiser to finish.
   const march = ctx.eligible.find((m) => m.id === 'marching_in_place' && !used.has(m.id))
   if (march) {
@@ -211,7 +250,7 @@ function buildCooldown(ctx: Ctx): WorkoutBlock {
     block: 'cooldown',
     title: 'Cool-down',
     items,
-    note: 'Keep moving gently until your breathing is back to normal, then rise slowly — this protects your blood pressure on these medications.',
+    note: 'Keep moving gently until your breathing is back to normal, then rise slowly — stopping suddenly can make you lightheaded, especially on heart or blood-pressure medication.',
   }
 }
 
@@ -222,8 +261,12 @@ function buildCooldown(ctx: Ctx): WorkoutBlock {
  */
 function pickStrengthPattern(ctx: Ctx, pattern: Pattern, used: Set<string>): Movement | null {
   const strong = ctx.eligible.filter((m) => m.pattern === pattern && m.tags?.includes('strength') && !used.has(m.id))
-  if (strong.length > 0) {
-    const m = sample(strong, ctx.rng)
+  // From Phase 3, favor real progressions over the Phase-1 regressions (a
+  // glute bridge is fine, but it shouldn't crowd out the deadlift).
+  const progressed = ctx.phase >= 3 ? strong.filter((m) => m.minPhase >= 2) : []
+  const pool = progressed.length > 0 ? progressed : strong
+  if (pool.length > 0) {
+    const m = sample(pool, ctx.rng)
     used.add(m.id)
     return m
   }
@@ -244,7 +287,7 @@ function buildStrength(ctx: Ctx, count: number): WorkoutBlock | null {
   for (const p of order) {
     if (items.length >= count) break
     const m = pickStrengthPattern(ctx, p, used)
-    if (m) items.push(toItem(ctx, m, strengthDose(ctx)))
+    if (m) items.push(toItem(ctx, m, strengthDose(ctx, m)))
   }
   if (items.length === 0) return null
   return {
@@ -259,12 +302,27 @@ function buildStrength(ctx: Ctx, count: number): WorkoutBlock | null {
   }
 }
 
+/**
+ * A conditioning dose that fits both the movement and the format. In an EMOM
+ * each movement has to finish inside its minute with rest to spare, so
+ * distances become short timed efforts.
+ */
+function metconDose(ctx: Ctx, m: Movement, emom: boolean): string {
+  if (HOLDS.has(m.id)) return emom ? '20 sec hold' : '30 sec hold'
+  if (m.pattern === 'carry') {
+    if (m.id === 'farmer_carry') return emom ? '20 m' : '40 m'
+    return emom ? '20 m (switch sides halfway)' : '40 m (switch sides halfway)'
+  }
+  if (m.pattern === 'locomotion') return emom ? '40 sec, steady' : '200 m or 1 min'
+  return ctx.phase >= 3 ? '10 reps' : '8 reps'
+}
+
 function buildMetcon(ctx: Ctx, maxItems?: number): WorkoutBlock | null {
   const used = new Set<string>()
   const items: PrescribedItem[] = []
 
   // Choose 2–3 movements that flow: prefer metcon-tagged + legs + locomotion.
-  const candidates = ctx.eligible.filter(
+  const all = ctx.eligible.filter(
     (m) =>
       !m.tags?.includes('warmup') && // keep warm-up/mobility drills out of the workout
       (m.tags?.includes('metcon') ||
@@ -275,8 +333,13 @@ function buildMetcon(ctx: Ctx, maxItems?: number): WorkoutBlock | null {
         m.pattern === 'carry') &&
       m.impact <= (ctx.phase >= 3 ? 2 : 1),
   )
+  // From Phase 3, build conditioning from real progressions; the Phase-1
+  // regressions (sit-to-stands, seated knee extensions…) only fill gaps.
+  const progressed = ctx.phase >= 3 ? all.filter((m) => m.minPhase >= 2) : []
+  const candidates = progressed.length >= 3 ? progressed : all
   const want = maxItems ?? (ctx.phase >= 3 ? 3 : 2)
   const usedPatterns = new Set<Pattern>()
+  const picked: Movement[] = []
   for (let i = 0; i < want && candidates.length > 0; i++) {
     // Prefer movements whose pattern is fresh today AND wasn't emphasized
     // yesterday (Phase 3+ recovery-aware rotation); relax in tiers if needed.
@@ -289,21 +352,9 @@ function buildMetcon(ctx: Ctx, maxItems?: number): WorkoutBlock | null {
     const m = sample(pool, ctx.rng)
     used.add(m.id)
     usedPatterns.add(m.pattern)
-    const isLoco = m.pattern === 'locomotion'
-    const isHold = m.id === 'wall_sit' || m.id === 'plank_bench'
-    const isCarry = m.pattern === 'carry'
-    const reps = isHold
-      ? '30 sec hold'
-      : isCarry
-        ? '40 m (switch sides halfway)'
-        : isLoco
-          ? '200 m or 1 min'
-          : ctx.phase >= 3
-            ? '10 reps'
-            : '8 reps'
-    items.push(toItem(ctx, m, reps))
+    picked.push(m)
   }
-  if (items.length === 0) return null
+  if (picked.length === 0) return null
 
   let format: string
   if (ctx.phase === 2) {
@@ -315,6 +366,11 @@ function buildMetcon(ctx: Ctx, maxItems?: number): WorkoutBlock | null {
       ['AMRAP 12 min (smooth, sustainable pace)', 'EMOM 12 min (one movement per minute, rotate)', '5 rounds for time — but stay in control'],
       ctx.rng,
     )
+  }
+
+  const emom = format.startsWith('EMOM')
+  for (const m of picked) {
+    items.push(toItem(ctx, m, metconDose(ctx, m, emom)))
   }
 
   return {
@@ -340,13 +396,15 @@ function buildAerobicIntervals(ctx: Ctx): WorkoutBlock {
   return {
     block: 'metcon',
     title: 'Aerobic intervals',
-    format: `${rounds} rounds: ${onMin} min ${hard.name.toLowerCase()} (working) / ${offMin} min easy walk (recover)`,
+    format: `${rounds} rounds: ${onMin} min ${hard.name.toLowerCase()} (working) / ${offMin} min ${
+      hard.requires.includes('rower') ? 'very easy rowing' : 'easy walk'
+    } (recover)`,
     items: [toItem(ctx, hard, `${onMin} min, at your target effort`)],
     note: 'On the "working" minutes, lift the effort to your target. On the "easy" minutes, truly recover — slow right down.',
   }
 }
 
-function buildEasyWalk(ctx: Ctx, kind: 'easy' | 'main'): WorkoutBlock {
+function buildEasyWalk(ctx: Ctx, kind: 'recovery' | 'easy' | 'main'): WorkoutBlock {
   const walk = locomotion(ctx)
   const mins = walkMinutes(ctx, kind)
   return {
@@ -393,7 +451,7 @@ function buildLightLegs(ctx: Ctx): WorkoutBlock | null {
     const m = sample(cands, ctx.rng)
     used.add(m.id)
     usedPatterns.add(m.pattern)
-    items.push(toItem(ctx, m, '1–2 sets × 8–10, slow and controlled'))
+    items.push(toItem(ctx, m, HOLDS.has(m.id) ? '2 sets × 15–20 sec hold' : '1–2 sets × 8–10, slow and controlled'))
   }
   if (items.length === 0) return null
   return {
@@ -420,6 +478,8 @@ export function generateWorkout(
   equipment: EquipmentItem[],
   forceArchetype?: Archetype,
   recentPatterns: Pattern[] = [],
+  /** Steps above/below the default load, from logged "too light/heavy" feedback. */
+  loadOffset = 0,
 ): Workout {
   const owned = ownedSet(equipment)
   const sternalOk = profile.sternalPrecautionsLifted
@@ -433,6 +493,7 @@ export function generateWorkout(
     eligible,
     // Only steer away from recent patterns once there's real load to manage.
     recentPatterns: new Set(phase >= 3 ? recentPatterns : []),
+    loadOffset,
   }
 
   const def = PHASES[phase]
@@ -471,7 +532,7 @@ export function generateWorkout(
       rpeLow = 1
       rpeHigh = 3
       add(buildWarmup(ctx))
-      add(buildEasyWalk(ctx, 'easy'))
+      add(buildEasyWalk(ctx, 'recovery'))
       add(buildCooldown(ctx))
       break
 
@@ -561,7 +622,8 @@ export function generateWorkout(
     estMinutes: 0, // recomputed by normalizeWorkout
     rpeLow,
     rpeHigh,
-    talkTest: def.talkTest,
+    // An easy day gets the easy-day talk test, not the phase's hard-interval one.
+    talkTest: isRecovery ? 'You should be able to hold a full conversation throughout.' : def.talkTest,
     blocks,
     isRecovery,
   })

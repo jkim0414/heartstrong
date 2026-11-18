@@ -128,4 +128,26 @@ const cres = validateAiWorkout(circuit, '2026-06-01', 1, p1, equipment)
 const cm = cres.workout?.blocks.find((b) => b.block === 'metcon')?.items.map((i) => i.dose)
 check('circuit: strips redundant "5 rounds x" from items', JSON.stringify(cm) === JSON.stringify(['8 reps', '10 reps', '2 min easy walk']))
 
+// 8. Load ceiling: owning heavy weights is not a prescription. The model may
+//    progress loads, but never past what the phase allows.
+const richEquipment: EquipmentItem[] = [
+  ...equipment.filter((e) => e.id !== 'dumbbells'),
+  { id: 'dumbbells', label: 'Dumbbells', owned: true, weightsLb: [10, 15, 20, 30, 40] },
+]
+const heavy = (phase: 2 | 4): RawAiWorkout => ({
+  title: 'Too heavy', summary: 'x', estMinutes: 25, rpeLow: 3, rpeHigh: 5,
+  blocks: [
+    { block: 'warmup', title: 'wu', items: [{ movementId: 'marching_in_place', dose: '2 min' }] },
+    { block: 'strength', title: 's', items: [
+      { movementId: 'goblet_squat', dose: '3 sets x 8', loadLb: 40 },
+      ...(phase === 4 ? [{ movementId: 'db_swing', dose: '3 sets x 10', loadLb: 40 }, { movementId: 'db_shoulder_press', dose: '3 sets x 8', loadLb: 40 }] : []),
+    ] },
+    { block: 'cooldown', title: 'cd', items: [{ movementId: 'quad_stretch', dose: '30s' }] },
+  ],
+})
+const p2Loads = validateAiWorkout(heavy(2), '2026-06-01', 2, p3, richEquipment).workout?.blocks.find((b) => b.block === 'strength')?.items.map((i) => i.loadLb)
+const p4Loads = validateAiWorkout(heavy(4), '2026-06-01', 4, p3, richEquipment).workout?.blocks.find((b) => b.block === 'strength')?.items.map((i) => i.loadLb)
+check('load ceiling: Phase 2 goblet squat 40 lb -> 20 lb', JSON.stringify(p2Loads) === JSON.stringify([20]))
+check('load ceiling: Phase 4 squat 40 ok, swing 40 -> 30, press 40 -> 30', JSON.stringify(p4Loads) === JSON.stringify([40, 30, 30]))
+
 console.log(`\n${fail === 0 ? `PASS — ${pass}/${pass} checks` : `FAIL — ${fail} failing`}`)
